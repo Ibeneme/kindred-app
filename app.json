@@ -9,7 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bitcode": false,
+      "bundleIdentifier": "com.ikennaclive.Kindred"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,13 +21,31 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
+      ],
+      "package": "com.ikennaclive.Kindred"
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "appleAudioPermission": "Allow Kindred to access your microphone",
+          "androidMicrophonePermission": "Allow Kindred to access your microphone"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -38,11 +58,17 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "supabaseUrl": "https://npzblfeflejcyclcopfi.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wemJsZmVmbGVqY3ljbGNvcGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMDgwNTQsImV4cCI6MjA4MjU4NDA1NH0.gsMilqRpVtYEd2Pj2ofPCQZiJOOMpCDY-8ucyvBsISk"
     }
   }
 }
