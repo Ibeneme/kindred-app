@@ -1,7 +1,18 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import axiosInstance from "../services/axiosInstance";
 
-// Types based on your Mongoose Schema
+interface Comment {
+    _id: string;
+    user: {
+        _id: string;
+        name: string;
+        profilePicture?: string;
+    };
+    message: string;
+    createdAt: string;
+}
+
+
 interface Report {
     _id: string;
     familyId: string;
@@ -17,7 +28,8 @@ interface Report {
     completionPercentage: number;
     proofLinks: string[];
     sharedWith: any[];
-    isOwner: boolean; // Server-side injected flag
+    comments?: Comment[]; // ✅ ADD THIS
+    isOwner: boolean;
     createdAt: string;
 }
 
@@ -87,6 +99,30 @@ export const deleteReport = createAsyncThunk(
     }
 );
 
+export const addReportComment = createAsyncThunk(
+    "reports/addComment",
+    async (
+        { reportId, message }: { reportId: string; message: string },
+        { rejectWithValue }
+    ) => {
+        try {
+            const response = await axiosInstance.put(
+                `/reports/reports-comments`,
+                { message, reportId }
+            );
+
+            return {
+                reportId,
+                comment: response.data.comment,
+            };
+        } catch (error: any) {
+            return rejectWithValue(
+                error.response?.data?.message || "Failed to add comment"
+            );
+        }
+    }
+);
+
 // --- Slice ---
 
 const reportSlice = createSlice({
@@ -131,6 +167,21 @@ const reportSlice = createSlice({
             // Delete Report
             .addCase(deleteReport.fulfilled, (state, action: PayloadAction<string>) => {
                 state.reports = state.reports.filter((r) => r._id !== action.payload);
+            })
+            // Add Comment
+            .addCase(addReportComment.fulfilled, (state, action) => {
+                const { reportId, comment } = action.payload;
+
+                const report = state.reports.find((r) => r._id === reportId);
+                if (report) {
+                    if (!report.comments) {
+                        report.comments = [];
+                    }
+                    report.comments.push(comment);
+                }
+            })
+            .addCase(addReportComment.rejected, (state, action) => {
+                state.error = action.payload as string;
             });
     },
 });

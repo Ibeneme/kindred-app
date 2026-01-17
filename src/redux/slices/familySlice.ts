@@ -24,6 +24,8 @@ export interface Family {
     isNotMember?: boolean;
     isInviteSent?: boolean;
     isJoinRequestSent?: boolean;
+    invitationCode?: any;
+    unreadSummary?: any
 }
 
 export interface InviteFamilyResponse {
@@ -77,15 +79,39 @@ export const updateFamily = createAsyncThunk("family/update", async ({ id, data 
     catch (err: any) { return rejectWithValue(err.response?.data?.message); }
 });
 
+export const sendInvite = createAsyncThunk<
+    { message: string; familyId: string; userId: string },
+    { familyId: string; userId: string },
+    { rejectValue: string }
+>(
+    "family/sendInvite",
+    async ({ familyId, userId }, { rejectWithValue }) => {
+        try {
+            const res = await axiosInstance.post(
+                `/families/${familyId}/invite`,
+                { userId }
+            );
+
+            return {
+                message: res.data.message,
+                familyId,
+                userId,
+            };
+        } catch (err: any) {
+            return rejectWithValue(
+                err.response?.data?.message || "Failed to send invite"
+            );
+        }
+    }
+);
+
+
 export const deleteFamily = createAsyncThunk("family/delete", async (id: string, { rejectWithValue }) => {
     try { await axiosInstance.delete(`/families/${id}`); return id; }
     catch (err: any) { return rejectWithValue(err.response?.data?.message); }
 });
 
-export const sendInvite = createAsyncThunk("family/sendInvite", async ({ familyId, userId }: { familyId: string, userId: string }, { rejectWithValue }) => {
-    try { const res = await axiosInstance.post(`/families/${familyId}/invite`, { userId }); return res.data; }
-    catch (err: any) { return rejectWithValue(err.response?.data?.message); }
-});
+
 
 export const acceptInvite = createAsyncThunk("family/acceptInvite", async (familyId: string, { rejectWithValue }) => {
     try { const res = await axiosInstance.post(`/families/${familyId}/accept`); return res.data.family; }
@@ -117,17 +143,17 @@ export const declineJoinRequest = createAsyncThunk("family/declineRequest", asyn
     catch (err: any) { return rejectWithValue(err.response?.data?.message); }
 });
 
-// 🔁 REPLACE FAMILY MEMBERS (OWNER ONLY)
+
 export const replaceFamilyMembers = createAsyncThunk(
     "family/replaceMembers",
     async (
-        { familyId, userIds }: { familyId: string; userIds: string[] },
+        { familyId, emails }: { familyId: string; emails: string[] },
         { rejectWithValue }
     ) => {
         try {
-            const res = await axiosInstance.put(
-                `/families/${familyId}/members`,
-                { userIds }
+            const res = await axiosInstance.post(
+                `/families/new-invite/send`,
+                { emails, familyId }
             );
 
             return res.data.family as Family;
@@ -195,25 +221,7 @@ const familySlice = createSlice({
                 state.loading = false;
                 state.joinRequests = state.joinRequests.filter(r => r._id !== action.payload);
             })
-            .addCase(
-                replaceFamilyMembers.fulfilled,
-                (state, action: PayloadAction<Family>) => {
-                    state.loading = false;
-
-                    // Update families list
-                    const idx = state.families.findIndex(
-                        (f) => f._id === action.payload._id
-                    );
-                    if (idx !== -1) {
-                        state.families[idx] = action.payload;
-                    }
-
-                    // Update selected family if open
-                    if (state.selectedFamily?._id === action.payload._id) {
-                        state.selectedFamily = action.payload;
-                    }
-                }
-            )
+       
             // --- 2. ALL addMatcher CALLS MUST BE AT THE END ---
             .addMatcher(
                 (action) => action.type.endsWith("/pending"),

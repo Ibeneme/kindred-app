@@ -39,6 +39,9 @@ import {
 import { AppDispatch, RootState } from "@/src/redux/store";
 import { saveAuthToken } from "@/src/redux/services/secureStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Image } from "expo-image";
+import kindredImage from "../../assets/home/new.png";
+import axiosInstance from "@/src/redux/services/axiosInstance";
 
 const AuthPage = () => {
   const [view, setView] = useState<
@@ -92,45 +95,87 @@ const AuthPage = () => {
     return `${year}-${month}-${day}`;
   };
 
-  // --- Handlers ---
+  const [isLoggingIn, setIsLoggingIn] = useState(false); // Add this state at the top
+
   const handleSignIn = async () => {
-    console.log("🚀 [SignIn] Attempting with:", {
-      email: email.trim(),
-      password,
-    });
+    // 1. Prevent double taps
+    if (isLoggingIn) return;
+
+    console.log("--- 🚪 SIGN IN ATTEMPT START ---");
 
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Missing fields", "Please enter email and password");
+      Alert.alert(
+        "Missing Fields",
+        "Please enter both email and password to continue."
+      );
       return;
     }
 
+    setIsLoggingIn(true); // Start Loading
+
     try {
-      const response = await dispatch(
-        login({ email: email.trim(), password })
-      ).unwrap();
+      console.log("[Axios Request] POST /auth/login", { email: email.trim() });
 
-      // ✅ SUCCESS RESPONSE
-      console.log("✅ [SignIn Success] Response:", response);
-      console.log("🔐 Token:", response.token);
-      console.log("👤 User:", response.user);
+      const response = await axiosInstance.post("/auth/login", {
+        email: email.trim(),
+        password,
+      });
 
-      // Save token
-      await saveAuthToken(response.token);
+      console.log("✅ [AXIOS SUCCESS] Status:", response.status);
+      console.log("✅ [AXIOS DATA]:", response.data);
 
-      // Save full name to AsyncStorage
-      const fullName = `${response.user.firstName} ${response.user.lastName}`;
+      const { data, status } = response;
+
+      // 2. Handle the 202 "Unverified" Case
+      if (status === 202 || data.isVerified === false) {
+        console.log("⚠️ Account unverified. Switching to OTP view.");
+
+        Alert.alert(
+          "Verification Required",
+          "Your account is not verified yet. We've sent a code to your email.",
+          [{ text: "Enter Code", onPress: () => setView("otp") }]
+        );
+        setIsLoggingIn(false);
+        return;
+      }
+
+      // 3. Handle 200 "Success" Case
+      console.log("💾 Saving session data...");
+      await saveAuthToken(data.token);
+
+      // Cleanup local storage/async storage as per your logs
+      const fullName = `${data.user.firstName} ${data.user.lastName}`;
       await AsyncStorage.setItem("userFullName", fullName);
-      console.log("💾 Saved full name:", fullName);
 
+      console.log("✨ Login Complete. Navigating home.");
       router.push("/(tabs)/home");
-    } catch (error: any) {
-      // ❌ ERROR RESPONSE
-      console.error("❌ [SignIn Error]:", error);
+    } catch (err: any) {
+      console.log("--- ❌ SIGN IN ERROR ---");
 
-      Alert.alert(
-        "Login Failed",
-        typeof error === "string" ? error : "Unable to sign in"
-      );
+      // Capture details from the error response
+      const serverMessage = err.response?.data?.message;
+      const statusCode = err.response?.status;
+
+      console.error(`Status: ${statusCode} | Message: ${serverMessage}`);
+
+      // Hide technical "difficulty" from user
+      if (statusCode === 401 || statusCode === 400) {
+        Alert.alert(
+          "Invalid Credentials",
+          "The email or password you entered is incorrect."
+        );
+      } else if (serverMessage?.toLowerCase().includes("verify")) {
+        // Fallback if backend sends 400 but message says verify
+        setView("otp");
+      } else {
+        Alert.alert(
+          "Connection Error",
+          "We're having trouble reaching the server. Please check your internet and try again."
+        );
+      }
+    } finally {
+      setIsLoggingIn(false); // Stop Loading regardless of outcome
+      console.log("--- 🚪 SIGN IN ATTEMPT END ---");
     }
   };
   const handleSignUp = async () => {
@@ -165,16 +210,17 @@ const AuthPage = () => {
   };
 
   const handleVerifyOtp = async () => {
-    console.log("🚀 [Verify] Sending OTP:", otp);
     if (!otp.trim()) return;
-    const result = await dispatch(
-      verifyOtp({ email: email.trim(), otp: otp.trim() })
-    );
-    console.warn(result, "result");
-    if (verifyOtp.fulfilled.match(result)) {
-      console.log("✅ [Verify] Success Payload:", result.payload);
-      Alert.alert("Success", "Account verified successfully!");
-      setView("signin");
+
+    try {
+      const result = await dispatch(
+        verifyOtp({ email: email.trim(), otp: otp.trim() })
+      ).unwrap();
+
+      Alert.alert("Success", "Account verified! Please sign in.");
+      setView("signin"); // Or immediately call handleSignIn() if you still have the password in state
+    } catch (err) {
+      Alert.alert("Verification Failed", "Invalid or expired code.");
     }
   };
 
@@ -235,6 +281,15 @@ const AuthPage = () => {
         >
           <View style={styles.formContainer}>
             {/* VIEW: SIGN IN */}
+
+            <View style={styles.logoContainer}>
+              <Image
+                source={kindredImage}
+                style={styles.logo}
+                contentFit="contain" // Changed from cover to contain to avoid cropping
+                placeholder={{ blurhash: "L6PZfSi_.AyE_4t7t7R**0o#DgR4" }}
+              />
+            </View>
             {view === "signin" && (
               <>
                 <AppText style={styles.formTitle} type="bold">
@@ -293,11 +348,11 @@ const AuthPage = () => {
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.button, loading && styles.buttonDisabled]}
+                  style={[styles.button, isLoggingIn && styles.buttonDisabled]}
                   onPress={handleSignIn}
-                  disabled={loading}
+                  disabled={isLoggingIn}
                 >
-                  {loading ? (
+                  {isLoggingIn ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -316,7 +371,6 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
-
             {/* VIEW: SIGN UP */}
             {view === "signup" && (
               <>
@@ -466,7 +520,6 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
-
             {/* VIEW: OTP VERIFICATION */}
             {view === "otp" && (
               <>
@@ -523,7 +576,6 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
-
             {/* VIEW: RESET REQUEST */}
             {view === "reset" && (
               <>
@@ -559,7 +611,6 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
-
             {/* VIEW: NEW PASSWORD */}
             {view === "new_password" && (
               <>
@@ -702,6 +753,14 @@ const styles = StyleSheet.create({
   buttonText: { color: "#000", fontSize: 17 },
   footerText: { marginTop: 24, fontSize: 15, color: "#6B7280" },
   linkText: { color: "#EAB308" },
+  logoContainer: {
+    marginBottom: 30, // Adds space between logo and the "Welcome" text
+    marginTop: 10, // Space from the top of the screen
+  },
+  logo: {
+    height: 80, // Slightly larger for better visibility
+    width: 160,
+  },
 });
 
 export default AuthPage;

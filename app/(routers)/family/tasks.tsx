@@ -27,6 +27,7 @@ import {
   Calendar as CalendarIcon,
   ArrowLeft,
   ClipboardList,
+  Search as SearchIcon, // Added search icon
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useDispatch, useSelector } from "react-redux";
@@ -47,10 +48,13 @@ const FamilyTasksPage = () => {
 
   const dispatch = useDispatch<AppDispatch>();
 
-  // FIX: Safety selector to prevent 'undefined' crashes
   const { tasks = [], loading = false } = useSelector(
     (state: RootState) => state.tasks || {}
   );
+
+  // Search States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // Form & UI State
   const [modalVisible, setModalVisible] = useState(false);
@@ -79,6 +83,15 @@ const FamilyTasksPage = () => {
     setRefreshing(true);
     dispatch(fetchTasksByFamily(familyId)).finally(() => setRefreshing(false));
   }, [dispatch, familyId]);
+
+  // Search Logic
+  const filteredTasks = tasks.filter((task: any) => {
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      task.title.toLowerCase().includes(searchLower) ||
+      (task.details && task.details.toLowerCase().includes(searchLower))
+    );
+  });
 
   const formatDate = (date: Date) => {
     return (
@@ -249,10 +262,38 @@ const FamilyTasksPage = () => {
         >
           <ArrowLeft size={24} color="#111827" />
         </TouchableOpacity>
-        <AppText type="bold" style={styles.headerTitle}>
-          {familyName} Tasks
-        </AppText>
-        <View style={{ width: 40 }} />
+
+        {isSearchVisible ? (
+          <View style={styles.searchBarWrapper}>
+            <TextInput
+              placeholder="Search tasks..."
+              style={styles.headerSearchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearchVisible(false);
+                setSearchQuery("");
+              }}
+            >
+              <X size={20} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <AppText type="bold" style={styles.headerTitle}>
+              {familyName} Tasks
+            </AppText>
+            <TouchableOpacity
+              onPress={() => setIsSearchVisible(true)}
+              style={styles.searchButton}
+            >
+              <SearchIcon size={24} color="#111827" />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {loading && !refreshing && tasks.length === 0 ? (
@@ -261,27 +302,29 @@ const FamilyTasksPage = () => {
         </View>
       ) : (
         <FlatList
-          data={tasks}
+          data={filteredTasks}
           keyExtractor={(item) => item._id}
           renderItem={renderTaskItem}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <ClipboardList size={48} color="#9CA3AF" />
               <AppText type="bold" style={styles.emptyTitle}>
-                No tasks yet
+                {searchQuery ? "No matching tasks found" : "No tasks yet"}
               </AppText>
-              <TouchableOpacity
-                style={styles.emptyBtn}
-                onPress={() => openModal()}
-              >
-                <Plus size={20} color="#000" />
-                <AppText type="bold">Add Task</AppText>
-              </TouchableOpacity>
+              {!searchQuery && (
+                <TouchableOpacity
+                  style={styles.emptyBtn}
+                  onPress={() => openModal()}
+                >
+                  <Plus size={20} color="#000" />
+                  <AppText type="bold">Add Task</AppText>
+                </TouchableOpacity>
+              )}
             </View>
           }
           contentContainerStyle={[
             styles.listContent,
-            tasks.length === 0 && { flex: 1 },
+            filteredTasks.length === 0 && { flex: 1 },
           ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -296,7 +339,7 @@ const FamilyTasksPage = () => {
       <Modal
         visible={modalVisible}
         animationType="slide"
-        presentationStyle="pageSheet" // iOS specific card style
+        presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
         <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
@@ -410,8 +453,25 @@ const styles = StyleSheet.create({
     borderColor: "#F3F4F6",
     flexDirection: "row",
     alignItems: "center",
+    height: 70, // Fixed height to prevent jump when search opens
   },
   headerTitle: { fontSize: 18, color: "#111827", textAlign: "center", flex: 1 },
+  searchButton: { padding: 8 },
+  searchBarWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginLeft: 10,
+    height: 40,
+  },
+  headerSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#111827",
+  },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   listContent: { padding: 16, paddingBottom: 100 },
   taskCard: {
@@ -501,7 +561,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 50,
   },
-  emptyTitle: { fontSize: 18, marginVertical: 10 },
+  emptyTitle: { fontSize: 18, marginVertical: 10, textAlign: "center" },
   emptyBtn: {
     flexDirection: "row",
     backgroundColor: "#EAB308",
@@ -516,6 +576,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalTitle: { fontSize: 18, color: "#111827" },
+  backButton: { padding: 8 },
 });
 
 export default FamilyTasksPage;

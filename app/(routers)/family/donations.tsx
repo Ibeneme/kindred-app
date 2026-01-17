@@ -15,8 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import * as Linking from "expo-linking"; // Use standard linking instead of Stripe SDK
+import * as Linking from "expo-linking";
 import {
   Plus,
   Edit,
@@ -64,9 +63,7 @@ const DonationCampaignPage = () => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetAmount, setTargetAmount] = useState("");
-  const [minimumDonation, setMinimumDonation] = useState("");
-  const [deadline, setDeadline] = useState(new Date(Date.now() + 7 * 86400000));
-  const [showPicker, setShowPicker] = useState(false);
+  const [minimumDonation, setMinimumDonation] = useState("5"); // Default $5
 
   useEffect(() => {
     if (familyId) dispatch(getFamilyCampaigns(familyId));
@@ -79,36 +76,69 @@ const DonationCampaignPage = () => {
     );
   }, [familyId]);
 
-  // --- WEB-BASED PAYMENT LOGIC (No Stripe SDK Required) ---
+  // --- SAVE CAMPAIGN (CREATE OR UPDATE) ---
+  const handleSaveCampaign = async () => {
+    if (!title || !targetAmount) {
+      Alert.alert("Error", "Please fill in all required fields.");
+      return;
+    }
+
+    const campaignData = {
+      familyId,
+      title,
+      description,
+      targetAmount: parseFloat(targetAmount),
+      minimumDonation: parseFloat(minimumDonation || "0"),
+    };
+
+    setIsSubmitting(true);
+    try {
+      if (editingItem) {
+        await dispatch(
+          updateCampaign({ id: editingItem._id, ...campaignData })
+        ).unwrap();
+        Alert.alert("Success", "Campaign updated successfully.");
+      } else {
+        await dispatch(createCampaign(campaignData)).unwrap();
+        Alert.alert("Success", "Campaign created successfully.");
+      }
+      setCampaignModalVisible(false);
+      onRefresh();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to save campaign");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // --- WEB-BASED PAYMENT LOGIC ---
   const handleDonateRedirect = async () => {
     const amountNum = parseFloat(donationAmount);
-    if (!amountNum || amountNum < (selectedCampaign?.minimumDonation || 0)) {
-      Alert.alert(
-        "Error",
-        `Minimum donation is $${selectedCampaign?.minimumDonation}`
-      );
+    const min = selectedCampaign?.minimumDonation || 0;
+
+    if (!amountNum || amountNum < min) {
+      Alert.alert("Error", `Minimum donation is $${min}`);
       return;
     }
 
     setIsProcessing(true);
     try {
-      // Replace with your actual backend endpoint that returns a Stripe Checkout URL
+      // Replace with your actual backend URL
       const response = await fetch(
         `YOUR_BACKEND_URL/donations/create-checkout-session`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount: Math.round(amountNum * 100),
+            amount: Math.round(amountNum * 100), // Stripe expects cents
             campaignId: selectedCampaign._id,
+            familyId: familyId,
           }),
         }
       );
 
       const data = await response.json();
-
       if (data.url) {
-        // This opens Stripe in the phone's browser (Safari/Chrome)
         await Linking.openURL(data.url);
         setDonateModalVisible(false);
         setDonationAmount("");
@@ -126,22 +156,27 @@ const DonationCampaignPage = () => {
   };
 
   const openCampaignModal = (item?: any) => {
-    if (item) {
+    if (item && item._id) {
       setEditingItem(item);
       setTitle(item.title);
+      setDescription(item.description || "");
       setTargetAmount(item.targetAmount?.toString());
-      setMinimumDonation(item.minimumDonation?.toString() || "0");
+      setMinimumDonation(item.minimumDonation?.toString() || "5");
     } else {
       setEditingItem(null);
       setTitle("");
+      setDescription("");
       setTargetAmount("");
-      setMinimumDonation("");
+      setMinimumDonation("5");
     }
     setCampaignModalVisible(true);
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    const progress = Math.min((item.currentAmount || 0) / item.targetAmount, 1);
+    const progress = Math.min(
+      (item.currentAmount || 0) / (item.targetAmount || 1),
+      1
+    );
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -158,9 +193,11 @@ const DonationCampaignPage = () => {
         <AppText style={styles.cardDesc} numberOfLines={2}>
           {item.description}
         </AppText>
+
         <View style={styles.progressContainer}>
           <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
         </View>
+
         <View style={styles.statsRow}>
           <View>
             <AppText type="bold" style={styles.raisedText}>
@@ -189,6 +226,7 @@ const DonationCampaignPage = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <ArrowLeft size={24} color="#111827" />
@@ -207,11 +245,21 @@ const DonationCampaignPage = () => {
         </TouchableOpacity>
       </View>
 
+      {/* CAMPAIGN LIST */}
       <FlatList
         data={campaigns}
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16 }}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={{ alignItems: "center", marginTop: 50 }}>
+              <AppText style={{ color: "#9CA3AF" }}>
+                No active campaigns found.
+              </AppText>
+            </View>
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -221,76 +269,145 @@ const DonationCampaignPage = () => {
         }
       />
 
+      {/* CAMPAIGN CREATE/EDIT MODAL */}
+      <Modal
+        visible={campaignModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+          <View style={styles.modalHeader}>
+            <AppText type="bold" style={styles.modalTitle}>
+              {editingItem ? "Edit Campaign" : "New Campaign"}
+            </AppText>
+            <TouchableOpacity onPress={() => setCampaignModalVisible(false)}>
+              <X size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ padding: 20 }}>
+            <AppText style={styles.label}>Title *</AppText>
+            <TextInput
+              style={styles.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="E.g. Medical Fund"
+            />
+
+            <AppText style={styles.label}>Description</AppText>
+            <TextInput
+              style={[styles.input, { height: 100 }]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Tell the family about this cause..."
+              multiline
+            />
+
+            <View style={{ flexDirection: "row", gap: 15 }}>
+              <View style={{ flex: 1 }}>
+                <AppText style={styles.label}>Goal ($) *</AppText>
+                <TextInput
+                  style={styles.input}
+                  value={targetAmount}
+                  onChangeText={setTargetAmount}
+                  keyboardType="numeric"
+                  placeholder="1000"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <AppText style={styles.label}>Min Donation ($)</AppText>
+                <TextInput
+                  style={styles.input}
+                  value={minimumDonation}
+                  onChangeText={setMinimumDonation}
+                  keyboardType="numeric"
+                  placeholder="5"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={handleSaveCampaign}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <AppText type="bold" style={{ color: "#FFF" }}>
+                  {editingItem ? "Update" : "Launch"} Campaign
+                </AppText>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* DONATE MODAL */}
       <Modal
         visible={donateModalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setDonateModalVisible(false)}
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-          <View style={styles.modalHeader}>
-            <AppText type="bold" style={styles.modalTitle}>
-              Donate to "{selectedCampaign?.title}"
-            </AppText>
-            <TouchableOpacity onPress={() => setDonateModalVisible(false)}>
-              <X size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={{ padding: 20 }}>
-            <View style={styles.donationSummary}>
-              <View style={styles.summaryRow}>
-                <AppText>
-                  Goal:{" "}
-                  <AppText type="bold">
-                    ${selectedCampaign?.targetAmount}
-                  </AppText>
-                </AppText>
-                <AppText>
-                  Raised:{" "}
-                  <AppText type="bold">
-                    ${selectedCampaign?.currentAmount || 0}
-                  </AppText>
-                </AppText>
-              </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+            <View style={styles.modalHeader}>
+              <AppText type="bold" style={styles.modalTitle}>
+                Donate
+              </AppText>
+              <TouchableOpacity onPress={() => setDonateModalVisible(false)}>
+                <X size={24} color="#000" />
+              </TouchableOpacity>
             </View>
+            <ScrollView style={{ padding: 20 }}>
+              <AppText
+                type="bold"
+                style={{ fontSize: 20, textAlign: "center" }}
+              >
+                {selectedCampaign?.title}
+              </AppText>
 
-            <AppText style={styles.label}>Enter Donation Amount (USD)</AppText>
-            <TextInput
-              style={[
-                styles.input,
-                { fontSize: 28, textAlign: "center", padding: 20 },
-              ]}
-              placeholder="$0.00"
-              keyboardType="numeric"
-              value={donationAmount}
-              onChangeText={setDonationAmount}
-            />
+              <AppText style={styles.label}>Enter Amount (USD)</AppText>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    fontSize: 32,
+                    textAlign: "center",
+                    padding: 20,
+                    color: "#EF4444",
+                  },
+                ]}
+                placeholder="$0"
+                keyboardType="decimal-pad"
+                value={donationAmount}
+                onChangeText={setDonationAmount}
+                autoFocus
+              />
 
-            <View style={styles.infoBox}>
               <View style={styles.infoItem}>
                 <ShieldCheck size={18} color="#059669" />
                 <AppText style={styles.infoText}>
-                  You will be redirected to a secure payment page.
+                  Secure payment via Stripe. Minimum is $
+                  {selectedCampaign?.minimumDonation}.
                 </AppText>
               </View>
-            </View>
 
-            <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: "#EF4444" }]}
-              onPress={handleDonateRedirect}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <AppText type="bold" style={{ color: "#FFF" }}>
-                  Continue to Payment
-                </AppText>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: "#EF4444" }]}
+                onPress={handleDonateRedirect}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <AppText type="bold" style={{ color: "#FFF" }}>
+                    Proceed to Checkout
+                  </AppText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -322,6 +439,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     elevation: 2,
   },
   cardHeader: {
@@ -386,6 +507,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
+    color: "#000",
   },
   submitBtn: {
     backgroundColor: "#EAB308",
@@ -394,20 +516,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 30,
   },
-  donationSummary: {
-    backgroundColor: "#F3F4F6",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between" },
-  infoBox: { marginTop: 20 },
   infoItem: {
     flexDirection: "row",
     gap: 10,
     backgroundColor: "#F0FDF4",
     padding: 12,
     borderRadius: 8,
+    marginTop: 20,
   },
   infoText: { fontSize: 12, color: "#166534", flex: 1 },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   ScrollView,
@@ -10,10 +10,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useDispatch } from "react-redux";
-import { ChevronLeft, Check, User, Search, Users2 } from "lucide-react-native";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  ChevronLeft,
+  MailPlus,
+  Info,
+  Search,
+  UserCheck,
+} from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
-import { AppDispatch } from "@/src/redux/store";
+import { AppDispatch, RootState } from "@/src/redux/store";
 import {
   replaceFamilyMembers,
   getFamilyById,
@@ -23,65 +29,103 @@ import { fetchAllUsers } from "@/src/redux/slices/userSlice";
 const InviteMembersPage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-  const { familyId, currentMembers, isOwner } = useLocalSearchParams();
+  const { familyId, isOwner } = useLocalSearchParams();
   const userIsOwner = isOwner === "true";
 
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const { users, loading: usersLoading } = useSelector(
+    (state: RootState) => state.users // assuming your user slice is called "users"
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [isFetching, setIsFetching] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [foundUser, setFoundUser] = useState<any | null>(null);
 
   useEffect(() => {
-    if (currentMembers) {
-      try {
-        const members = JSON.parse(currentMembers as string);
-        setSelectedIds(members.map((m: any) => m._id));
-      } catch (e) {
-        console.error(e);
-      }
+    if (!users || users.length === 0) {
+      dispatch(fetchAllUsers());
     }
-    setIsFetching(true);
-    dispatch(fetchAllUsers())
-      .unwrap()
-      .then((data: any) => setAllUsers(Array.isArray(data) ? data : []))
-      .catch(() => Alert.alert("Error", "Failed to load directory"))
-      .finally(() => setIsFetching(false));
-  }, [dispatch, currentMembers]);
+  }, [dispatch, users]);
 
-  const toggleUser = (userId: string) => {
-    if (!userIsOwner) return; // Non-owners cannot select/deselect
-    setSelectedIds((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
+  // Search logic: by email or phone
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setFoundUser(null);
+      return;
+    }
+
+    // Try to find user by email or phone
+    const match = users.find((u: any) => {
+      const email = (u.email || "").toLowerCase();
+      const phone = (u.phone || u.phoneNumber || "")
+        .toLowerCase()
+        .replace(/[\s\-\+]/g, ""); // normalize
+      const queryNoSpace = q.replace(/[\s\-\+]/g, "");
+
+      return email === q || phone === queryNoSpace;
+    });
+
+    setFoundUser(match || null);
+  }, [searchQuery, users]);
+
+  const isValidInput = (input: string) => {
+    const trimmed = input.trim();
+    // Rough validation: either looks like email or like phone
+    const looksLikeEmail =
+      trimmed.includes("@") && trimmed.includes(".") && trimmed.length > 5;
+    const looksLikePhone = /^\+?\d{8,15}$/.test(
+      trimmed.replace(/[\s\-\(\)]/g, "")
     );
+    return looksLikeEmail || looksLikePhone;
   };
 
-  const handleSave = () => {
+  const getInviteEmail = () => {
+    if (foundUser) {
+      return foundUser.email; // prefer email of found user
+    }
+    // otherwise use whatever was typed (hopefully email)
+    return searchQuery.trim();
+  };
+
+  const handleInvite = () => {
     if (!familyId || !userIsOwner) return;
+
+    const emailToInvite = getInviteEmail();
+
+    if (!emailToInvite || !emailToInvite.includes("@")) {
+      Alert.alert(
+        "Invalid Input",
+        "Please enter a valid email address to send invitation."
+      );
+      return;
+    }
+
     setIsSaving(true);
+
     dispatch(
       replaceFamilyMembers({
         familyId: familyId as string,
-        userIds: selectedIds,
+        emails: [emailToInvite],
       })
     )
       .unwrap()
       .then(() => {
         dispatch(getFamilyById(familyId as string));
+        Alert.alert("Success", `Invitation sent to ${emailToInvite}`);
         router.back();
       })
-      .catch(() => Alert.alert("Update Failed", "Something went wrong"))
+      .catch((error) => {
+        Alert.alert(
+          "Invite Failed",
+          typeof error === "string" ? error : error?.message || "Server error"
+        );
+      })
       .finally(() => setIsSaving(false));
   };
 
-  const filteredUsers = useMemo(() => {
-    return allUsers.filter((u) => {
-      const full = `${u?.firstName || ""} ${u?.lastName || ""}`.toLowerCase();
-      return full.includes(searchQuery.toLowerCase());
-    });
-  }, [allUsers, searchQuery]);
+  const placeholderText = searchQuery.includes("@")
+    ? "Enter email address..."
+    : "Enter phone number or email...";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -92,90 +136,95 @@ const InviteMembersPage = () => {
         >
           <ChevronLeft size={22} color="#111827" />
         </TouchableOpacity>
+
         <View style={styles.headerTitleContainer}>
           <AppText type="bold" style={styles.headerTitle}>
-            {userIsOwner ? "Manage Members" : "Members"}
+            Invite Member
           </AppText>
-          <AppText style={styles.headerSubtitle}>
-            {selectedIds.length} members
-          </AppText>
+          <AppText style={styles.headerSubtitle}>By email or phone</AppText>
         </View>
-        {userIsOwner ? (
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={styles.saveBtn}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#000" />
-            ) : (
-              <AppText type="bold">Done</AppText>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
+
+        <View style={{ width: 80 }} />
+      </View>
+
+      <View style={styles.guideContainer}>
+        <Info size={18} color="#64748B" />
+        <AppText style={styles.guideText}>
+          Enter email or phone number. If they're already on the app, we'll
+          still send the invite link to their email.
+        </AppText>
       </View>
 
       <View style={styles.searchWrapper}>
         <View style={styles.searchBar}>
           <Search size={18} color="#94A3B8" />
           <TextInput
-            placeholder="Search users..."
+            placeholder={placeholderText}
             style={styles.input}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            keyboardType={
+              searchQuery.includes("@") ? "email-address" : "phone-pad"
+            }
+            autoCorrect={false}
+            autoFocus
           />
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.listContainer}>
-        {filteredUsers.map((item) => {
-          const isSelected = selectedIds.includes(item._id);
-          return (
-            <TouchableOpacity
-              key={item._id}
-              onPress={() => toggleUser(item._id)}
-              activeOpacity={userIsOwner ? 0.7 : 1}
-              style={[
-                styles.card,
-                isSelected && userIsOwner && styles.cardActive,
-              ]}
-            >
-              <View style={styles.cardInfo}>
-                <View
-                  style={[
-                    styles.avatar,
-                    isSelected && userIsOwner && styles.avatarActive,
-                  ]}
-                >
-                  <User
-                    size={20}
-                    color={isSelected && userIsOwner ? "#EAB308" : "#64748B"}
-                  />
-                </View>
-                <View>
-                  <AppText type="bold">
-                    {item.firstName} {item.lastName}
+        {usersLoading ? (
+          <ActivityIndicator
+            size="large"
+            color="#EAB308"
+            style={{ marginTop: 80 }}
+          />
+        ) : isValidInput(searchQuery) ? (
+          <TouchableOpacity
+            style={styles.inviteCard}
+            onPress={handleInvite}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#EAB308" />
+            ) : (
+              <>
+                <MailPlus size={28} color="#EAB308" />
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <AppText type="bold" style={styles.inviteTitle}>
+                    Invite{" "}
+                    {foundUser
+                      ? `"${foundUser.firstName || "User"}"`
+                      : `"${searchQuery.trim()}"`}
                   </AppText>
-                  <AppText style={styles.emailText}>{item.email}</AppText>
-                </View>
-              </View>
-              {userIsOwner && (
-                <View
-                  style={[
-                    styles.checkCircle,
-                    isSelected && styles.checkCircleActive,
-                  ]}
-                >
-                  {isSelected && (
-                    <Check size={12} color="#000" strokeWidth={4} />
+
+                  <AppText style={styles.inviteSubtitle}>
+                    Send invitation link to{" "}
+                    {foundUser ? foundUser.email : "this email"}
+                  </AppText>
+
+                  {foundUser && (
+                    <View style={styles.alreadyOnAppRow}>
+                      <UserCheck size={16} color="#16A34A" />
+                      <AppText style={styles.alreadyOnAppText}>
+                        This user is already on the app
+                      </AppText>
+                    </View>
                   )}
                 </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
+              </>
+            )}
+          </TouchableOpacity>
+        ) : searchQuery.trim() ? (
+          <AppText style={styles.hintText}>
+            Enter a valid email or phone number (min 8 digits) to continue
+          </AppText>
+        ) : (
+          <AppText style={styles.hintText}>
+            Type email or phone number above to invite someone
+          </AppText>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -183,6 +232,7 @@ const InviteMembersPage = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAFAFA" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -190,8 +240,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
   },
   iconCircle: {
     width: 40,
@@ -203,67 +251,93 @@ const styles = StyleSheet.create({
   },
   headerTitleContainer: { alignItems: "center" },
   headerTitle: { fontSize: 18, color: "#111827" },
-  headerSubtitle: {
-    fontSize: 11,
-    color: "#EAB308",
-    marginTop: 2,
-    textTransform: "uppercase",
+  headerSubtitle: { fontSize: 12, color: "#64748B", marginTop: 2 },
+
+  guideContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F0F9FF",
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
   },
-  saveBtn: {
-    backgroundColor: "#EAB308",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
+  guideText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#1E40AF",
+    lineHeight: 18,
+    marginLeft: 10,
   },
-  searchWrapper: { padding: 16, backgroundColor: "#FFF" },
+
+  searchWrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FFF",
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F8FAFC",
-    paddingHorizontal: 15,
-    borderRadius: 15,
+    paddingHorizontal: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
   },
-  input: { flex: 1, height: 48, marginLeft: 10, color: "#1E293B" },
-  listContainer: { padding: 16, paddingBottom: 40 },
-  card: {
+  input: {
+    flex: 1,
+    height: 52,
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#1E293B",
+  },
+
+  listContainer: {
+    padding: 20,
+    alignItems: "center",
+    paddingBottom: 100,
+  },
+
+  inviteCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: "#FFF",
-    padding: 14,
+    padding: 20,
     borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
-  },
-  cardActive: { borderColor: "#EAB308", backgroundColor: "#FEFCE8" },
-  cardInfo: { flexDirection: "row", alignItems: "center", gap: 15 },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarActive: {
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#EAB308",
-  },
-  emailText: { fontSize: 12, color: "#64748B" },
-  checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
     borderWidth: 2,
-    borderColor: "#CBD5E1",
-    justifyContent: "center",
-    alignItems: "center",
+    borderColor: "#EAB308",
+    borderStyle: "dashed",
+    width: "100%",
+    marginTop: 20,
   },
-  checkCircleActive: { backgroundColor: "#EAB308", borderColor: "#EAB308" },
+  inviteTitle: { fontSize: 16, color: "#111827" },
+  inviteSubtitle: { fontSize: 13, color: "#64748B", marginTop: 4 },
+
+  alreadyOnAppRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  alreadyOnAppText: {
+    fontSize: 13,
+    color: "#16A34A",
+    marginLeft: 6,
+    fontWeight: "500",
+  },
+
+  hintText: {
+    textAlign: "center",
+    color: "#94A3B8",
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 60,
+    paddingHorizontal: 30,
+  },
 });
 
 export default InviteMembersPage;

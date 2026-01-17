@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   ScrollView,
@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useDispatch, useSelector } from "react-redux";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   Plus,
   Search,
@@ -31,6 +32,7 @@ import {
 import { fetchUserProfile } from "@/src/redux/slices/userSlice";
 import { AppDispatch, RootState } from "@/src/redux/store";
 import { useGlobalSpinner } from "@/src/hooks/useGlobalSpinner";
+import { fetchNotifications } from "@/src/redux/slices/notificationSlice";
 
 const COLORS = {
   black: "#000000",
@@ -43,63 +45,76 @@ const COLORS = {
   text: "#1E293B",
   textLight: "#64748B",
   icon: "#64748B",
+  unreadRed: "#EF4444",
 };
+
+const motivationalQuotes = [
+  "Unity is strength",
+  "Family is everything",
+  "Together we are stronger",
+  "In unity, we find strength",
+];
 
 const HomePage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-
   const { families, loading: familyLoading } = useSelector(
     (state: RootState) => state.family
   );
   const { user, loading: userLoading } = useSelector(
     (state: RootState) => state.user
   );
+  const { loading, unreadCount: globalNotificationsCount } = useSelector(
+    (state: RootState) => state.notifications
+  );
 
-  // Local State
-  const [localSearch, setLocalSearch] = useState(""); // Filter existing list
-  const [inviteCode, setInviteCode] = useState(""); // Search for new family
+  useGlobalSpinner(loading || userLoading);
+
+  const [localSearch, setLocalSearch] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [isSearchingCode, setIsSearchingCode] = useState(false);
-
+  const [currentQuote, setCurrentQuote] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    dispatch(getFamilies());
-    dispatch(fetchUserProfile());
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, [dispatch]);
+  const getRandomQuote = useCallback(() => {
+    const randomIndex = Math.floor(Math.random() * motivationalQuotes.length);
+    setCurrentQuote(motivationalQuotes[randomIndex]);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      dispatch(getFamilies());
+      dispatch(fetchUserProfile());
+      dispatch(fetchNotifications());
+      getRandomQuote();
+
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
+    }, [dispatch, getRandomQuote])
+  );
 
   const onRefresh = useCallback(() => {
     dispatch(getFamilies());
     dispatch(fetchUserProfile());
-  }, [dispatch]);
+    dispatch(fetchNotifications());
+    getRandomQuote();
+  }, [dispatch, getRandomQuote]);
 
-  /**
-   * Hits the /families/invite/:code endpoint via Redux Thunk
-   */
   const handleJoinByCode = async () => {
     const trimmedCode = inviteCode.trim();
     if (!trimmedCode) return;
-
     setIsSearchingCode(true);
     try {
       const result = await dispatch(
         getFamilyByInviteCode(trimmedCode)
       ).unwrap();
-
-      console.warn(result, "resultresult");
-      // If successful, navigate to the Join Family screen with the data
       router.push(`/(routers)/family/${result?.family._id}`);
-      setInviteCode(""); // Clear on success
+      setInviteCode("");
     } catch (err: any) {
-      Alert.alert(
-        "Family Not Found",
-        err || "Please check the code and try again."
-      );
+      Alert.alert("Family Not Found", err || "Check the code and try again.");
     } finally {
       setIsSearchingCode(false);
     }
@@ -121,15 +136,24 @@ const HomePage = () => {
               Good day,
             </AppText>
             <AppText type="bold" style={styles.userName}>
-              {user?.firstName || "Member"}
+              {user?.firstName || "***************"}
             </AppText>
           </View>
+
           <TouchableOpacity
             style={styles.notificationBtn}
             onPress={() => router.push("/(tabs)/notifications")}
           >
             <Bell size={24} color={COLORS.black} />
-            <View style={styles.notificationDot} />
+            {globalNotificationsCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <AppText style={styles.unreadCountText} type="bold">
+                  {globalNotificationsCount > 9
+                    ? "9+"
+                    : globalNotificationsCount}
+                </AppText>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -144,45 +168,56 @@ const HomePage = () => {
             />
           }
         >
-          {/* 1. SEARCH BY INVITE CODE (Global Search) */}
+          {/* Quote Section */}
+          <View style={styles.quoteContainer}>
+            <Sparkles
+              size={16}
+              color={COLORS.primary}
+              style={{ marginRight: 8 }}
+            />
+            <AppText style={styles.quoteText} type="medium">
+              "{currentQuote}"
+            </AppText>
+          </View>
+
+          {/* Join with Invite Code */}
           <AppText type="bold" style={styles.sectionTitle}>
             Join with Invite Code
           </AppText>
+          <View className="flex flex-col items-center gap-4">
+            <View className="relative">
+              <View className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 bg-green-500" />
+            </View>
+          </View>
           <View style={styles.inviteSearchContainer}>
             <Hash size={18} color={COLORS.icon} />
             <TextInput
-              placeholder="Enter code (e.g. 4KXH4N85)"
+              placeholder="Enter code"
               style={styles.searchInput}
               value={inviteCode}
               onChangeText={setInviteCode}
               placeholderTextColor={COLORS.icon}
               autoCapitalize="characters"
-              maxLength={12}
-              editable={!isSearchingCode}
             />
             <TouchableOpacity
-              style={[
-                styles.goButton,
-                (!inviteCode || isSearchingCode) && styles.disabledBtn,
-              ]}
+              style={styles.goButton}
               onPress={handleJoinByCode}
-              disabled={!inviteCode || isSearchingCode}
             >
               {isSearchingCode ? (
-                <ActivityIndicator size="small" color={COLORS.black} />
+                <ActivityIndicator size="small" />
               ) : (
                 <ArrowRight size={20} color={COLORS.black} />
               )}
             </TouchableOpacity>
           </View>
 
-          {/* 2. CREATE BUTTON */}
+          {/* Create Button */}
           <TouchableOpacity
             style={styles.createBtn}
             onPress={() => router.push("/(routers)/family/CreateFamily")}
           >
             <View style={styles.plusCircle}>
-              <Plus size={18} color={COLORS.black} strokeWidth={3} />
+              <Plus size={18} color={COLORS.black} />
             </View>
             <AppText type="bold" style={styles.createBtnText}>
               Create New Family
@@ -191,7 +226,7 @@ const HomePage = () => {
 
           <View style={styles.divider} />
 
-          {/* 3. LIST FILTER & FAMILY LIST */}
+          {/* Your Families List */}
           <View style={styles.listHeader}>
             <AppText type="bold" style={styles.sectionTitle}>
               Your Families
@@ -199,7 +234,7 @@ const HomePage = () => {
             <View style={styles.filterBox}>
               <Search size={14} color={COLORS.icon} />
               <TextInput
-                placeholder="Filter list..."
+                placeholder="Filter..."
                 style={styles.filterInput}
                 value={localSearch}
                 onChangeText={setLocalSearch}
@@ -208,17 +243,16 @@ const HomePage = () => {
             </View>
           </View>
 
-          {filteredFamilies.length === 0 && !familyLoading && (
-            <View style={styles.emptyCenter}>
-              <Users size={40} color={COLORS.textLight} opacity={0.5} />
-              <AppText style={styles.emptyText}>
-                No families matched your search
-              </AppText>
-            </View>
-          )}
-
           {filteredFamilies.map((item, index) => {
             const accentColor = cardAccents[index % cardAccents.length];
+
+            // LOGIC: Sum all unread items from unreadSummary
+            const summary = item.unreadSummary || {};
+            const totalUnread = Object.values(summary).reduce(
+              (acc: number, val: any) => acc + (Number(val) || 0),
+              0
+            );
+
             return (
               <TouchableOpacity
                 key={item._id}
@@ -231,18 +265,31 @@ const HomePage = () => {
                 />
                 <View style={styles.cardContent}>
                   <View style={styles.cardTop}>
-                    <AppText type="bold" style={styles.familyName}>
-                      {item.familyName}
-                    </AppText>
+                    <View style={{ flex: 1 }}>
+                      <AppText type="bold" style={styles.familyName}>
+                        {item.familyName}
+                      </AppText>
+                      <AppText style={styles.inviteLabel}>
+                        Code: {item.inviteCode}
+                      </AppText>
+                    </View>
+
+                    {/* RENDER RED BADGE IF totalUnread > 0 */}
+                    {totalUnread > 0 && (
+                      <View style={styles.familyUnreadBadge}>
+                        <AppText style={styles.familyUnreadText} type="bold">
+                          {totalUnread > 99 ? "99+" : totalUnread}
+                        </AppText>
+                      </View>
+                    )}
+
                     <ChevronRight size={20} color={COLORS.icon} />
                   </View>
-                  <AppText style={styles.inviteLabel}>
-                    Code: {item.inviteCode || item.invitationCode}
-                  </AppText>
+
                   <View style={styles.memberRow}>
                     <Users size={14} color={COLORS.textLight} />
                     <AppText style={styles.memberCount}>
-                      {item.members?.length || 1} members
+                      {item.members?.length || 0} members
                     </AppText>
                   </View>
                 </View>
@@ -273,25 +320,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
   },
-  notificationDot: {
+  unreadBadge: {
     position: "absolute",
-    top: 12,
-    right: 14,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    borderWidth: 1.5,
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.unreadRed,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
     borderColor: COLORS.background,
   },
-
+  unreadCountText: { color: "#FFFFFF", fontSize: 10, textAlign: "center" },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
+  quoteContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 24,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.yellow,
+  },
+  quoteText: { fontSize: 14, color: COLORS.text, fontStyle: "italic", flex: 1 },
   sectionTitle: { fontSize: 16, color: COLORS.text, marginBottom: 12 },
-
-  // Invite Search Box
   inviteSearchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -315,9 +371,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     margin: 4,
   },
-  disabledBtn: { opacity: 0.5 },
-
-  // Create Button
   createBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -336,10 +389,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   createBtnText: { color: COLORS.yellow, fontSize: 16 },
-
   divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 24 },
-
-  // Filter List Styles
   listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -356,8 +406,6 @@ const styles = StyleSheet.create({
     height: 36,
   },
   filterInput: { flex: 1, fontSize: 13, color: COLORS.text, marginLeft: 6 },
-
-  // Card Styles
   familyCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 22,
@@ -375,6 +423,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   familyName: { fontSize: 17, color: COLORS.text },
+  familyUnreadBadge: {
+    backgroundColor: COLORS.unreadRed,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    paddingHorizontal: 6,
+    // Add shadow for better "pop"
+    shadowColor: COLORS.unreadRed,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  familyUnreadText: { color: "#FFF", fontSize: 10, textAlign: "center" },
   inviteLabel: {
     fontSize: 12,
     color: COLORS.textLight,
@@ -388,9 +453,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   memberCount: { fontSize: 13, color: COLORS.textLight },
-
-  emptyCenter: { alignItems: "center", paddingVertical: 40 },
-  emptyText: { color: COLORS.textLight, marginTop: 8, fontSize: 14 },
 });
 
 export default HomePage;

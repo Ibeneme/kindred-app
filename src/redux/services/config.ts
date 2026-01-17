@@ -15,10 +15,10 @@ type AppConfig = {
 };
 
 const extra = (Constants.expoConfig?.extra || {}) as AppExtra;
-
-export const BASE_SOCKET = 'http://172.20.10.5:5005';
+// 'https://kindred-server.onrender.com';
+export const BASE_SOCKET = 'https://kindred-server.onrender.com';
 export const config: AppConfig = {
-  apiBaseUrl: extra.apiBaseUrl || 'http://172.20.10.5:5005/api/v1',
+  apiBaseUrl: extra.apiBaseUrl || 'https://kindred-server.onrender.com/api/v1',
   googleClientId: extra.googleClientId,
   googleIosId: extra.googleIosId,
   googleAndroidId: extra.googleAndroidId,

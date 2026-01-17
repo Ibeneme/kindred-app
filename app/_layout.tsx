@@ -1,7 +1,7 @@
-// app/_layout.tsx
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { StyleSheet, View, useColorScheme } from "react-native"; // Added missing imports
 import "react-native-reanimated";
 import * as SplashScreen from "expo-splash-screen";
 import { Provider } from "react-redux";
@@ -14,7 +14,8 @@ import {
 import { store } from "@/src/redux/store";
 import { SpinnerProvider } from "@/src/contexts/SpinnerProvider";
 import { SocketProvider } from "@/src/contexts/SocketProvider";
-//import { StripeProvider } from "@stripe/stripe-react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
@@ -23,6 +24,9 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
+
   const [loaded, error] = useFonts({
     DMSansRegular: DMSans_400Regular,
     DMSansMedium: DMSans_500Medium,
@@ -30,9 +34,7 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (error) {
-      console.error("Font loading error:", error);
-    }
+    if (error) console.error("Font loading error:", error);
   }, [error]);
 
   useEffect(() => {
@@ -41,27 +43,48 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  if (!loaded) return null;
+
+  // Simple theme object (or pull this from your actual theme context)
+  const theme = {
+    background: isDark ? "#0F172A" : "#F8FAFC",
+  };
 
   return (
-    //     <StripeProvider
-    //       publishableKey="pk_test_your_key_here"
-    // //      merchantIdentifier="merchant.com.kindred"
-    //     >
-    <SocketProvider>
-      <SpinnerProvider>
-        <Provider store={store}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-            }}
-          />
-          <StatusBar style="auto" />
-        </Provider>
-      </SpinnerProvider>
-    </SocketProvider>
-    // </StripeProvider>
+    <SafeAreaProvider>
+      <SocketProvider>
+        <SpinnerProvider>
+          <Provider store={store}>
+            {/* Wrap the Stack in a View to apply global background colors */}
+            <View
+              style={[
+                styles.contentContainer,
+                { backgroundColor: theme.background },
+              ]}
+            >
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  // Enable smooth transitions
+                  animation: "fade_from_bottom",
+                }}
+              />
+            </View>
+
+            <StatusBar
+              style={isDark ? "light" : "dark"}
+              backgroundColor={theme.background}
+              translucent={true}
+            />
+          </Provider>
+        </SpinnerProvider>
+      </SocketProvider>
+    </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  contentContainer: {
+    flex: 1,
+  },
+});

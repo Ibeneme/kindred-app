@@ -21,22 +21,14 @@ import {
   GraduationCap,
   Building2,
   Church,
-  Info,
-  Sparkles,
-  Check,
+  ArrowRight,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useDispatch } from "react-redux";
 import { AppDispatch } from "@/src/redux/store";
 import { createFamily, getFamilies } from "@/src/redux/slices/familySlice";
 
-// Redux
-// import { useAppDispatch } from "@/src/hooks/reduxHooks"; // Your typed dispatch hook
-// import { createFamily } from "@/src/features/family/familySlice";
-// import { getFamilies } from "@/src/features/family/familySlice";
-
 const { width } = Dimensions.get("window");
-const CARD_WIDTH = (width - 52) / 2;
 
 const CreateFamilyPage = () => {
   const router = useRouter();
@@ -48,61 +40,20 @@ const CreateFamilyPage = () => {
   const [loading, setLoading] = useState(false);
 
   const familyTypes = [
-    {
-      id: "1",
-      title: "Nuclear Family",
-      desc: "Parents & children",
-      icon: <Users2 size={24} color="#FFF" />,
-      color: "#EC4899",
-    },
-    {
-      id: "2",
-      title: "Extended Family",
-      desc: "Large relatives",
-      icon: <Home size={24} color="#FFF" />,
-      color: "#8B5CF6",
-    },
-    {
-      id: "3",
-      title: "Workplace Team",
-      desc: "Work colleagues",
-      icon: <Briefcase size={24} color="#FFF" />,
-      color: "#3B82F6",
-    },
-    {
-      id: "4",
-      title: "Alumni Group",
-      desc: "School mates",
-      icon: <GraduationCap size={24} color="#FFF" />,
-      color: "#10B981",
-    },
-    {
-      id: "5",
-      title: "Community",
-      desc: "Org & Leaders",
-      icon: <Building2 size={24} color="#FFF" />,
-      color: "#F59E0B",
-    },
-    {
-      id: "6",
-      title: "Religious Group",
-      desc: "Congregation",
-      icon: <Church size={24} color="#FFF" />,
-      color: "#F97316",
-    },
+    { id: "1", title: "Nuclear Family", icon: <Users2 size={20} /> },
+    { id: "2", title: "Extended Family", icon: <Home size={20} /> },
+    { id: "3", title: "Workplace Team", icon: <Briefcase size={20} /> },
+    { id: "4", title: "Alumni Group", icon: <GraduationCap size={20} /> },
+    { id: "5", title: "Community", icon: <Building2 size={20} /> },
+    { id: "6", title: "Religious Group", icon: <Church size={20} /> },
   ];
-
-  const selectedColor =
-    familyTypes.find((t) => t.title === selectedType)?.color || "#6B7280";
 
   const handleCreateFamily = async () => {
     if (!familyName.trim()) {
-      Alert.alert("Oops", "Please enter a family name");
+      Alert.alert("Missing Info", "Please give your circle a name.");
       return;
     }
-
     setLoading(true);
-
     try {
       const resultAction = await dispatch(
         createFamily({
@@ -111,29 +62,17 @@ const CreateFamilyPage = () => {
           description: description.trim() || undefined,
         })
       );
-
       if (createFamily.fulfilled.match(resultAction)) {
-        // Success! Refresh families list and go back
-        await dispatch(getFamilies()); // Optional: refresh list immediately
-
-        Alert.alert("Success! 🎉", `${familyName} has been created`, [
-          {
-            text: "Done",
-            onPress: () => router.back(),
-          },
-        ]);
+        await dispatch(getFamilies());
+        router.back();
       } else {
-        // Error from rejectWithValue
-        const errorMsg =
-          resultAction.payload || "Failed to create family. Try again.";
-        Alert.alert("Error", errorMsg as string);
+        Alert.alert(
+          "Error",
+          (resultAction.payload as string) || "Failed to create."
+        );
       }
-    } catch (err: any) {
-      console.error("Unexpected create family error:", err);
-      Alert.alert(
-        "Network Error",
-        "Please check your connection and try again."
-      );
+    } catch (err) {
+      Alert.alert("Error", "Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -145,157 +84,110 @@ const CreateFamilyPage = () => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        {/* Header */}
+        {/* Simple Minimal Header */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={styles.backBtn}
           >
-            <ChevronLeft size={28} color="#111827" strokeWidth={2.5} />
+            <ChevronLeft size={24} color="#000" />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <AppText type="bold" style={styles.headerTitle}>
-              New Family
-            </AppText>
-            <Sparkles size={18} color="#EAB308" />
-          </View>
-          <View style={{ width: 44 }} />
+          <AppText type="bold" style={styles.headerTitle}>
+            CREATE CIRCLE
+          </AppText>
+          <View style={{ width: 40 }} />
         </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          <AppText type="bold" style={styles.heroTitle}>
-            Let's build your circle
-          </AppText>
-
-          <View style={styles.infoBox}>
-            <Info size={18} color="#B45309" />
-            <AppText style={styles.infoText}>
-              Families are private spaces to share memories with your inner
-              circle.
+          <View style={styles.heroSection}>
+            <AppText type="bold" style={styles.heroTitle}>
+              Start your{"\n"}new circle.
+            </AppText>
+            <AppText style={styles.heroSub}>
+              Organize your family, team, or community in one private space.
             </AppText>
           </View>
 
-          <AppText type="bold" style={styles.sectionLabel}>
-            Select Family Type
-          </AppText>
-
+          {/* Type Selection (Pills) */}
+          <AppText style={styles.sectionLabel}>CHOOSE CATEGORY</AppText>
           <View style={styles.typeGrid}>
             {familyTypes.map((type) => {
               const isSelected = selectedType === type.title;
               return (
                 <TouchableOpacity
                   key={type.id}
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                   style={[
-                    styles.typeCard,
-                    isSelected && {
-                      borderColor: type.color,
-                      backgroundColor: type.color + "08",
-                    },
+                    styles.typePill,
+                    isSelected && styles.typePillSelected,
                   ]}
                   onPress={() => setSelectedType(type.title)}
                 >
-                  <View
-                    style={[
-                      styles.iconWrapper,
-                      { backgroundColor: type.color },
-                    ]}
-                  >
-                    {type.icon}
-                  </View>
+                  {React.cloneElement(type.icon as React.ReactElement, {
+                    color: isSelected ? "#000" : "#666",
+                  })}
                   <AppText
-                    type="bold"
                     style={[
-                      styles.typeTitle,
-                      isSelected && { color: type.color },
+                      styles.typeText,
+                      isSelected && styles.typeTextSelected,
                     ]}
                   >
                     {type.title}
                   </AppText>
-                  <AppText style={styles.typeDesc} numberOfLines={1}>
-                    {type.desc}
-                  </AppText>
-                  {isSelected && (
-                    <View
-                      style={[
-                        styles.activeDot,
-                        { backgroundColor: type.color },
-                      ]}
-                    />
-                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Form Inputs */}
+          {/* Input Fields */}
           <View style={styles.formSection}>
-            <View style={styles.inputGroup}>
-              <AppText type="bold" style={styles.inputLabel}>
-                Family Name
-              </AppText>
+            <View style={styles.inputContainer}>
+              <AppText style={styles.inputLabel}>FAMILY OR GROUP NAME</AppText>
               <TextInput
-                style={styles.formInput}
-                placeholder="The Johnsons..."
-                placeholderTextColor="#9CA3AF"
+                style={styles.textInput}
+                placeholder="The Smith Family"
+                placeholderTextColor="#A1A1A1"
                 value={familyName}
                 onChangeText={setFamilyName}
-                autoFocus
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <AppText type="bold" style={styles.inputLabel}>
-                  Description
-                </AppText>
-                <AppText style={styles.charCount}>
-                  {description.length}/500
-                </AppText>
-              </View>
+            <View style={styles.inputContainer}>
+              <AppText style={styles.inputLabel}>
+                DESCRIPTION (OPTIONAL)
+              </AppText>
               <TextInput
-                style={[styles.formInput, styles.textArea]}
-                placeholder="What makes this group special?"
-                placeholderTextColor="#9CA3AF"
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Share the purpose of this circle..."
+                placeholderTextColor="#A1A1A1"
                 multiline
-                maxLength={500}
+                numberOfLines={3}
                 value={description}
                 onChangeText={setDescription}
               />
             </View>
           </View>
 
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[
-                styles.submitBtn,
-                {
-                  backgroundColor:
-                    familyName && !loading ? selectedColor : "#E5E7EB",
-                },
-              ]}
-              onPress={handleCreateFamily}
-              disabled={!familyName || loading}
-              activeOpacity={0.9}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <AppText
-                  type="bold"
-                  style={[
-                    styles.submitBtnText,
-                    (!familyName || loading) && { color: "#9CA3AF" },
-                  ]}
-                >
-                  Create Family ✨
+          {/* Large Action Button */}
+          <TouchableOpacity
+            style={[styles.createBtn, !familyName && styles.createBtnDisabled]}
+            onPress={handleCreateFamily}
+            disabled={!familyName || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <View style={styles.btnContent}>
+                <AppText type="bold" style={styles.createBtnText}>
+                  CREATE CIRCLE
                 </AppText>
-              )}
-            </TouchableOpacity>
-          </View>
+                <ArrowRight size={20} color="#000" />
+              </View>
+            )}
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -303,98 +195,88 @@ const CreateFamilyPage = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     height: 60,
+    backgroundColor: "#FFF",
   },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F3F4F6",
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitleContainer: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 18, color: "#111827" },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 },
-  heroTitle: { fontSize: 24, color: "#111827", marginBottom: 12 },
-  infoBox: {
-    flexDirection: "row",
-    backgroundColor: "#FFFBEB",
-    padding: 14,
-    borderRadius: 16,
-    gap: 10,
-    alignItems: "center",
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#FEF3C7",
-  },
-  infoText: { flex: 1, fontSize: 13, color: "#92400E" },
-  sectionLabel: { fontSize: 16, color: "#374151", marginBottom: 16 },
+  headerTitle: { fontSize: 13, letterSpacing: 1.5, color: "#000" },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
 
+  heroSection: { marginBottom: 35 },
+  heroTitle: { fontSize: 34, color: "#000", lineHeight: 40, marginBottom: 12 },
+  heroSub: { fontSize: 15, color: "#666", lineHeight: 22 },
+
+  sectionLabel: {
+    fontSize: 11,
+    color: "#999",
+    letterSpacing: 1,
+    marginBottom: 15,
+    fontWeight: "800",
+  },
   typeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 32,
+    gap: 10,
+    marginBottom: 35,
   },
-  typeCard: {
-    width: CARD_WIDTH,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: "transparent",
-    marginBottom: 12,
-    position: "relative",
-  },
-  iconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  typePill: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  typeTitle: { fontSize: 14, color: "#111827", marginBottom: 2 },
-  typeDesc: { fontSize: 11, color: "#6B7280" },
-  activeDot: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-
-  formSection: { gap: 20 },
-  inputGroup: { gap: 8 },
-  labelRow: { flexDirection: "row", justifyContent: "space-between" },
-  inputLabel: { fontSize: 14, color: "#4B5563" },
-  charCount: { fontSize: 11, color: "#9CA3AF" },
-  formInput: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 16,
+    backgroundColor: "#F5F5F5",
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === "ios" ? 16 : 12,
-    fontSize: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#EEE",
   },
-  textArea: { height: 100, textAlignVertical: "top" },
-  footer: { marginTop: 40 },
-  submitBtn: {
-    height: 58,
-    borderRadius: 18,
+  typePillSelected: { backgroundColor: "#EAB308", borderColor: "#EAB308" },
+  typeText: { color: "#666", marginLeft: 8, fontWeight: "600", fontSize: 13 },
+  typeTextSelected: { color: "#000" },
+
+  formSection: { gap: 30 },
+  inputContainer: { borderBottomWidth: 1.5, borderBottomColor: "#F0F0F0" },
+  inputLabel: {
+    fontSize: 10,
+    color: "#999",
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  textInput: {
+    color: "#000",
+    fontSize: 18,
+    fontWeight: "600",
+    paddingVertical: 12,
+  },
+  textArea: { fontSize: 15, minHeight: 80, textAlignVertical: "top" },
+
+  createBtn: {
+    marginTop: 50,
+    backgroundColor: "#EAB308",
+    height: 64,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    // Shadow for Light Mode
+    shadowColor: "#EAB308",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  submitBtnText: { color: "#FFF", fontSize: 17 },
+  btnContent: { flexDirection: "row", alignItems: "center", gap: 10 },
+  createBtnDisabled: { backgroundColor: "#F5F5F5", shadowOpacity: 0 },
+  createBtnText: { fontSize: 16, color: "#000", letterSpacing: 0.5 },
 });
 
 export default CreateFamilyPage;

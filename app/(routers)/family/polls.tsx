@@ -24,6 +24,7 @@ import {
   Clock,
   CheckCircle2,
   Circle,
+  Search,
 } from "lucide-react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
@@ -41,10 +42,7 @@ const PollsPage = () => {
     familyId: string;
     isOwner: string;
   }>();
-
-  // Convert isOwner param to boolean
   const userIsOwner = isOwner === "true";
-
   const dispatch = useDispatch<AppDispatch>();
   const { polls = [], loading = false } = useSelector(
     (state: RootState) => state.polls
@@ -54,6 +52,10 @@ const PollsPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Search States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
   // Create Poll Form State
   const [form, setForm] = useState({
     title: "",
@@ -62,14 +64,19 @@ const PollsPage = () => {
     endDate: "",
   });
 
+  // Optimistic votes: pollId → selected optionId
+  const [optimisticVotes, setOptimisticVotes] = useState<
+    Record<string, string>
+  >({});
+
   useEffect(() => {
     dispatch(fetchPollsByFamily(familyId));
-  }, [familyId]);
+  }, [familyId, dispatch]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     dispatch(fetchPollsByFamily(familyId)).finally(() => setRefreshing(false));
-  }, [familyId]);
+  }, [familyId, dispatch]);
 
   const addOptionField = () => {
     if (form.options.length < 6) {
@@ -83,17 +90,11 @@ const PollsPage = () => {
   };
 
   const handleCreatePoll = async () => {
-    // Safety check
     if (!userIsOwner) return;
-
     const validOptions = form.options.filter((opt) => opt.trim() !== "");
     if (!form.title.trim() || validOptions.length < 2) {
-      return Alert.alert(
-        "Required",
-        "Please provide a title and at least 2 options."
-      );
+      return Alert.alert("Required", "Title and at least 2 options needed.");
     }
-
     setIsSubmitting(true);
     const action = await dispatch(
       createPoll({
@@ -103,15 +104,54 @@ const PollsPage = () => {
       })
     );
     setIsSubmitting(false);
-
     if (createPoll.fulfilled.match(action)) {
       setModalVisible(false);
       setForm({ title: "", description: "", options: ["", ""], endDate: "" });
+    } else {
+      Alert.alert("Error", "Failed to create poll");
     }
   };
 
+  const handleVote = async (pollId: string, optionId: string) => {
+    const poll = polls.find((p) => p._id === pollId);
+    if (
+      !poll ||
+      poll.isExpired ||
+      poll.userVotedOptionId ||
+      optimisticVotes[pollId]
+    ) {
+      return; // already voted or expired
+    }
+    // Optimistic UI update
+    setOptimisticVotes((prev) => ({ ...prev, [pollId]: optionId }));
+    const result = await dispatch(voteInPoll({ pollId, optionId }));
+    if (voteInPoll.rejected.match(result)) {
+      // Rollback on failure
+      setOptimisticVotes((prev) => {
+        const next = { ...prev };
+        delete next[pollId];
+        return next;
+      });
+      Alert.alert("Error", "Could not record your vote");
+    }
+  };
+
+  // Filter Logic for Titles and Descriptions
+  const filteredPolls = polls.filter((poll) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      poll.title.toLowerCase().includes(q) ||
+      (poll.description && poll.description.toLowerCase().includes(q))
+    );
+  });
+
   const renderPollCard = ({ item }: { item: any }) => {
     const totalVotes = item.totalVotes || 0;
+    const hasVoted = !!item.userVotedOptionId || !!optimisticVotes[item._id];
+    const selectedOptionId =
+      optimisticVotes[item._id] || item.userVotedOptionId;
+    const isSoloVoter = totalVotes === 1 && hasVoted;
 
     return (
       <View style={styles.card}>
@@ -124,73 +164,99 @@ const PollsPage = () => {
               <AppText style={styles.pollDesc}>{item.description}</AppText>
             )}
           </View>
-
-          {/* ONLY SHOW DELETE IF OWNER */}
           {userIsOwner && (
             <TouchableOpacity
-              onPress={() => dispatch(deletePoll(item._id))}
+              onPress={() => {
+                Alert.alert("Delete Poll", "Are you sure?", [
+                  { text: "Cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => dispatch(deletePoll(item._id)),
+                  },
+                ]);
+              }}
               style={styles.deleteBtn}
             >
-              <Trash2 size={18} color="#EF4444" />
+              <Trash2 size={20} color="#EF4444" />
             </TouchableOpacity>
           )}
         </View>
-
         <View style={styles.optionsContainer}>
           {item.options.map((opt: any) => {
             const voteCount = opt.votes?.length || 0;
-            const percentage =
+            let displayPercentage =
               totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
-            const isSelected = item.userVotedOptionId === opt._id;
-
+            if (isSoloVoter && selectedOptionId === opt._id) {
+              displayPercentage = 100;
+            }
+            const isSelected = selectedOptionId === opt._id;
             return (
               <TouchableOpacity
                 key={opt._id}
-                style={[styles.optionRow, isSelected && styles.selectedOption]}
-                onPress={() =>
-                  dispatch(voteInPoll({ pollId: item._id, optionId: opt._id }))
-                }
-                disabled={item.isExpired}
+                style={[
+                  styles.optionRow,
+                  isSelected && styles.selectedOption,
+                  (item.isExpired || hasVoted) && styles.disabledOption,
+                ]}
+                onPress={() => handleVote(item._id, opt._id)}
+                disabled={item.isExpired || hasVoted}
+                activeOpacity={0.8}
               >
-                {item.userVotedOptionId && (
+                {(hasVoted || item.userVotedOptionId) && (
                   <View
-                    style={[styles.progressBg, { width: `${percentage}%` }]}
+                    style={[
+                      styles.progressBg,
+                      { width: `${displayPercentage}%` },
+                    ]}
                   />
                 )}
-
                 <View style={styles.optionContent}>
                   <View style={styles.optionTextRow}>
                     {isSelected ? (
-                      <CheckCircle2 size={18} color="#EAB308" />
+                      <CheckCircle2 size={22} color="#EAB308" />
                     ) : (
-                      <Circle size={18} color="#D1D5DB" />
+                      <Circle size={22} color="#D1D5DB" />
                     )}
                     <AppText
                       style={[
                         styles.optionText,
-                        isSelected && { fontWeight: "bold" },
+                        isSelected && { fontWeight: "700", color: "#111827" },
                       ]}
                     >
                       {opt.text}
                     </AppText>
                   </View>
-                  {item.userVotedOptionId && (
-                    <AppText style={styles.percentageText}>
-                      {percentage}%
-                    </AppText>
+                  {(hasVoted || item.userVotedOptionId) && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <AppText style={styles.percentageText}>
+                        {displayPercentage}%
+                      </AppText>
+                      {isSelected && (
+                        <AppText style={styles.youVotedLabel}>
+                          You voted
+                        </AppText>
+                      )}
+                    </View>
                   )}
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
-
         <View style={styles.cardFooter}>
           <AppText style={styles.voteCountText}>
             {totalVotes} {totalVotes === 1 ? "vote" : "votes"}
+            {isSoloVoter && " (just you)"}
           </AppText>
           <View style={styles.footerRight}>
-            <Clock size={12} color="#9CA3AF" />
+            <Clock size={14} color="#9CA3AF" />
             <AppText style={styles.dateText}>
               {item.isExpired ? "Closed" : "Active"}
             </AppText>
@@ -202,21 +268,48 @@ const PollsPage = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Dynamic Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <ArrowLeft size={24} color="#111827" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleRow}>
-          <BarChart3 size={20} color="#EAB308" />
-          <AppText type="bold" style={styles.headerTitle}>
-            Family Polls
-          </AppText>
-        </View>
-        <View style={{ width: 24 }} />
+        {!isSearching ? (
+          <>
+            <TouchableOpacity onPress={() => router.back()}>
+              <ArrowLeft size={24} color="#111827" />
+            </TouchableOpacity>
+            <View style={styles.headerTitleRow}>
+              <BarChart3 size={20} color="#EAB308" />
+              <AppText type="bold" style={styles.headerTitle}>
+                Family Polls
+              </AppText>
+            </View>
+            <TouchableOpacity onPress={() => setIsSearching(true)}>
+              <Search size={24} color="#111827" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.searchHeaderWrapper}>
+            <Search size={20} color="#6B7280" />
+            <TextInput
+              style={styles.headerSearchInput}
+              placeholder="Search polls..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              placeholderTextColor="#9CA3AF"
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery("");
+                setIsSearching(false);
+              }}
+            >
+              <X size={24} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <FlatList
-        data={polls}
+        data={filteredPolls}
         keyExtractor={(item) => item._id}
         renderItem={renderPollCard}
         contentContainerStyle={styles.list}
@@ -227,28 +320,26 @@ const PollsPage = () => {
           <View style={styles.emptyState}>
             <BarChart3 size={60} color="#E5E7EB" />
             <AppText type="bold" style={styles.emptyTitle}>
-              No active polls
+              {searchQuery ? "No matching polls" : "No active polls"}
             </AppText>
             <AppText style={styles.emptySubtitle}>
-              {userIsOwner
-                ? "Create a poll to decide on family activities!"
-                : "Wait for the owner to create a poll."}
+              {searchQuery
+                ? "Try a different keyword"
+                : userIsOwner
+                ? "Create a poll to decide on family matters!"
+                : "No polls available yet."}
             </AppText>
           </View>
         }
       />
 
-      {/* ONLY SHOW CREATE BUTTON IF OWNER */}
-      {userIsOwner && (
-        <TouchableOpacity
+<TouchableOpacity
           style={styles.fab}
           onPress={() => setModalVisible(true)}
         >
           <Plus size={28} color="#FFF" />
         </TouchableOpacity>
-      )}
 
-      {/* CREATE MODAL */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -263,22 +354,20 @@ const PollsPage = () => {
                 <X size={24} color="#374151" />
               </TouchableOpacity>
             </View>
-
             <ScrollView showsVerticalScrollIndicator={false}>
               <AppText style={styles.label}>Question *</AppText>
               <TextInput
-                placeholder="e.g. Where should we go for dinner?"
+                placeholder="e.g. What movie should we watch tonight?"
                 style={styles.input}
                 value={form.title}
                 onChangeText={(t) => setForm({ ...form, title: t })}
               />
-
-              <AppText style={styles.label}>Options *</AppText>
+              <AppText style={styles.label}>Options * (2–6)</AppText>
               {form.options.map((opt, index) => (
                 <View key={index} style={styles.optionInputRow}>
                   <TextInput
                     placeholder={`Option ${index + 1}`}
-                    style={[styles.input, { flex: 1, marginBottom: 8 }]}
+                    style={[styles.input, { flex: 1 }]}
                     value={opt}
                     onChangeText={(t) => {
                       const newOpts = [...form.options];
@@ -296,17 +385,20 @@ const PollsPage = () => {
                   )}
                 </View>
               ))}
-
+              {form.options.length < 6 && (
+                <TouchableOpacity
+                  style={styles.addOptionBtn}
+                  onPress={addOptionField}
+                >
+                  <Plus size={18} color="#EAB308" />
+                  <AppText style={styles.addOptionTxt}>Add Option</AppText>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={styles.addOptionBtn}
-                onPress={addOptionField}
-              >
-                <Plus size={18} color="#EAB308" />
-                <AppText style={styles.addOptionTxt}>Add Option</AppText>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.submitBtn}
+                style={[
+                  styles.submitBtn,
+                  isSubmitting && styles.submitDisabled,
+                ]}
                 onPress={handleCreatePoll}
                 disabled={isSubmitting}
               >
@@ -326,7 +418,6 @@ const PollsPage = () => {
   );
 };
 
-// ... Styles remain identical to your original code
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   header: {
@@ -337,9 +428,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderColor: "#F3F4F6",
+    height: 70, // Fixed height for consistent transition
   },
   headerTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerTitle: { fontSize: 18 },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
+  searchHeaderWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    gap: 8,
+  },
+  headerSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#111827",
+  },
   list: { padding: 16, paddingBottom: 100 },
   card: {
     backgroundColor: "#FFF",
@@ -348,19 +455,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     elevation: 2,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 15,
+    marginBottom: 16,
   },
   pollTitle: { fontSize: 17, color: "#111827" },
   pollDesc: { fontSize: 13, color: "#6B7280", marginTop: 4 },
-  deleteBtn: { padding: 4 },
-  optionsContainer: { gap: 10, marginBottom: 15 },
+  deleteBtn: { padding: 6 },
+  optionsContainer: { gap: 10, marginBottom: 16 },
   optionRow: {
-    height: 50,
+    height: 54,
     borderRadius: 12,
     backgroundColor: "#F9FAFB",
     borderWidth: 1,
@@ -368,7 +477,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "center",
   },
-  selectedOption: { borderColor: "#EAB308", backgroundColor: "#FFFBEB" },
+  selectedOption: {
+    borderColor: "#EAB308",
+    backgroundColor: "#FFFBEB",
+  },
+  disabledOption: {
+    opacity: 0.7,
+  },
   progressBg: {
     position: "absolute",
     top: 0,
@@ -380,24 +495,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
-  optionTextRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  optionText: { fontSize: 14, color: "#374151" },
-  percentageText: { fontSize: 14, fontWeight: "bold", color: "#111827" },
+  optionTextRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  optionText: { fontSize: 15, color: "#374151" },
+  percentageText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    minWidth: 54,
+    textAlign: "right",
+  },
+  youVotedLabel: {
+    fontSize: 12,
+    color: "#EAB308",
+    fontWeight: "600",
+    backgroundColor: "rgba(234, 179, 8, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     borderTopWidth: 1,
-    borderColor: "#F9FAFB",
+    borderColor: "#F3F4F6",
     paddingTop: 12,
   },
-  voteCountText: { fontSize: 12, color: "#6B7280" },
-  footerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
-  dateText: { fontSize: 11, color: "#9CA3AF" },
+  voteCountText: { fontSize: 13, color: "#6B7280" },
+  footerRight: { flexDirection: "row", alignItems: "center", gap: 5 },
+  dateText: { fontSize: 13, color: "#9CA3AF" },
   fab: {
     position: "absolute",
-    bottom: 24,
+    bottom: 28,
     right: 24,
     width: 60,
     height: 60,
@@ -405,20 +535,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#111827",
     alignItems: "center",
     justifyContent: "center",
-    elevation: 5,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
   },
   emptyState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 100,
+    marginTop: 120,
+    paddingHorizontal: 40,
   },
-  emptyTitle: { fontSize: 18, marginTop: 15, color: "#111827" },
+  emptyTitle: { fontSize: 19, marginTop: 16, color: "#111827" },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#6B7280",
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -431,37 +566,52 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 24,
     padding: 24,
-    maxHeight: "85%",
+    maxHeight: "88%",
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 24,
+    alignItems: "center",
   },
-  modalTitle: { fontSize: 20 },
-  label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 8 },
+  modalTitle: { fontSize: 21, fontWeight: "700" },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
+  },
   input: {
     backgroundColor: "#F9FAFB",
     padding: 14,
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+    fontSize: 16,
   },
-  optionInputRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  removeOptBtn: { marginBottom: 8 },
+  optionInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  removeOptBtn: { padding: 8 },
   addOptionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 24,
   },
-  addOptionTxt: { color: "#EAB308", fontWeight: "bold" },
+  addOptionTxt: { color: "#EAB308", fontWeight: "700", fontSize: 15 },
   submitBtn: {
     backgroundColor: "#EAB308",
-    padding: 18,
-    borderRadius: 15,
+    paddingVertical: 18,
+    borderRadius: 16,
     alignItems: "center",
+  },
+  submitDisabled: {
+    opacity: 0.6,
   },
 });
 

@@ -26,6 +26,7 @@ import {
   ThumbsUp,
   Trash2,
   Lightbulb,
+  Search,
 } from "lucide-react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
@@ -37,7 +38,6 @@ import {
   deleteSuggestion,
 } from "@/src/redux/slices/suggestionSlice";
 
-// Types (add these to a types file in production)
 interface Suggestion {
   _id: string;
   title: string;
@@ -61,13 +61,16 @@ const SuggestionBox = () => {
     (state: RootState) => state.suggestions || {}
   );
 
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [form, setForm] = useState({ title: "", description: "" });
   const [image, setImage] = useState<string | null>(null);
 
-  // Fetch suggestions on mount and family change
   useEffect(() => {
     if (familyId) {
       dispatch(fetchSuggestionsByFamily(familyId));
@@ -81,23 +84,27 @@ const SuggestionBox = () => {
     );
   }, [familyId, dispatch]);
 
+  // Search Logic: Filters both title and description
+  const filteredSuggestions = suggestions.filter((item: Suggestion) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (item.title || "").toLowerCase().includes(query) ||
+      (item.description || "").toLowerCase().includes(query)
+    );
+  });
+
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Please allow access to your photo library."
-      );
+      Alert.alert("Permission Denied", "Please allow access to your library.");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets[0]?.uri) {
       setImage(result.assets[0].uri);
     }
@@ -105,15 +112,10 @@ const SuggestionBox = () => {
 
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.description.trim()) {
-      Alert.alert(
-        "Missing Fields",
-        "Please provide both a title and description."
-      );
+      Alert.alert("Missing Fields", "Please provide a title and description.");
       return;
     }
-
     setIsSubmitting(true);
-
     const formData = new FormData();
     formData.append("title", form.title.trim());
     formData.append("description", form.description.trim());
@@ -123,40 +125,29 @@ const SuggestionBox = () => {
       const filename = image.split("/").pop() || "image.jpg";
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : "image/jpeg";
-
-      formData.append("image", {
-        uri: image,
-        name: filename,
-        type,
-      } as any);
+      formData.append("image", { uri: image, name: filename, type } as any);
     }
 
     const result = await dispatch(createSuggestion(formData));
-
     setIsSubmitting(false);
-
     if (createSuggestion.fulfilled.match(result)) {
       setModalVisible(false);
       setForm({ title: "", description: "" });
       setImage(null);
     } else {
-      Alert.alert("Error", "Failed to submit suggestion. Please try again.");
+      Alert.alert("Error", "Failed to submit. Please try again.");
     }
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert(
-      "Delete Suggestion",
-      "Are you sure you want to remove this idea?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => dispatch(deleteSuggestion(id)),
-        },
-      ]
-    );
+    Alert.alert("Delete", "Remove this idea?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => dispatch(deleteSuggestion(id)),
+      },
+    ]);
   };
 
   const renderSuggestion: ListRenderItem<Suggestion> = ({ item }) => (
@@ -168,7 +159,6 @@ const SuggestionBox = () => {
           resizeMode="cover"
         />
       )}
-
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
           <AppText type="bold" style={styles.cardTitle} numberOfLines={2}>
@@ -183,11 +173,9 @@ const SuggestionBox = () => {
             </TouchableOpacity>
           )}
         </View>
-
         <AppText style={styles.cardDescription} numberOfLines={4}>
           {item.description}
         </AppText>
-
         <View style={styles.cardFooter}>
           <View style={styles.authorInfo}>
             <View style={styles.avatar}>
@@ -199,14 +187,12 @@ const SuggestionBox = () => {
               {item.sender?.name || "Family Member"}
             </AppText>
           </View>
-
           <TouchableOpacity
             style={[
               styles.upvoteButton,
               item.hasUpvoted && styles.upvoteButtonActive,
             ]}
             onPress={() => dispatch(toggleUpvote(item._id))}
-            accessibilityLabel={`Upvote suggestion, currently ${item.upvoteCount} upvotes`}
           >
             <ThumbsUp
               size={16}
@@ -226,49 +212,63 @@ const SuggestionBox = () => {
     </View>
   );
 
-  const renderEmpty = () => (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIcon}>
-        <Lightbulb size={48} color="#9CA3AF" />
-      </View>
-      <AppText type="bold" style={styles.emptyTitle}>
-        No suggestions yet
-      </AppText>
-      <AppText style={styles.emptySubtitle}>
-        Be the first to share an idea with your family!
-      </AppText>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
+      {/* Header with Toggleable Search */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft size={24} color="#111827" />
-        </TouchableOpacity>
+        {!isSearchVisible ? (
+          <>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ArrowLeft size={24} color="#111827" />
+            </TouchableOpacity>
 
-        <View style={styles.headerTitle}>
-          <Lightbulb size={22} color="#EAB308" />
-          <AppText type="bold" style={styles.headerText}>
-            {familyName || "Family"} Suggestions
-          </AppText>
-        </View>
+            <View style={styles.headerTitleContainer}>
+              <Lightbulb size={22} color="#EAB308" />
+              <AppText type="bold" style={styles.headerText}>
+                {familyName || "Family"} Box
+              </AppText>
+            </View>
 
-        <View style={{ width: 40 }} />
+            <TouchableOpacity
+              onPress={() => setIsSearchVisible(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Search size={22} color="#111827" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.searchHeader}>
+            <Search size={20} color="#6B7280" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search ideas..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              placeholderTextColor="#9CA3AF"
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearchVisible(false);
+                setSearchQuery("");
+              }}
+            >
+              <X size={22} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {/* Content */}
       {loading && suggestions.length === 0 && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#EAB308" />
         </View>
       ) : (
         <FlatList
-          data={suggestions}
+          data={filteredSuggestions}
           renderItem={renderSuggestion}
           keyExtractor={(item) => item._id}
           contentContainerStyle={
@@ -281,118 +281,145 @@ const SuggestionBox = () => {
               tintColor="#EAB308"
             />
           }
-          ListEmptyComponent={renderEmpty}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Lightbulb size={48} color="#9CA3AF" />
+              </View>
+              <AppText type="bold" style={styles.emptyTitle}>
+                {searchQuery ? "No matches found" : "No suggestions yet"}
+              </AppText>
+              <AppText style={styles.emptySubtitle}>
+                {searchQuery
+                  ? "Try a different keyword"
+                  : "Be the first to share an idea!"}
+              </AppText>
+            </View>
+          }
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => setModalVisible(true)}
-        accessibilityLabel="Add new suggestion"
       >
         <Plus size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Add Suggestion Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <AppText type="bold" style={styles.modalTitle}>
-                New Suggestion
-              </AppText>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <X size={24} color="#374151" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <AppText style={styles.label}>Title *</AppText>
-              <TextInput
-                style={styles.input}
-                placeholder="Give your idea a clear title"
-                value={form.title}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, title: text }))
-                }
-                autoFocus
-              />
-
-              <AppText style={styles.label}>Description *</AppText>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe your suggestion in detail..."
-                value={form.description}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, description: text }))
-                }
-                multiline
-                textAlignVertical="top"
-              />
-
-              <AppText style={styles.label}>Photo (Optional)</AppText>
-              <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-                {image ? (
-                  <View style={styles.imagePreviewContainer}>
-                    <Image
-                      source={{ uri: image }}
-                      style={styles.previewImage}
-                    />
-                    <TouchableOpacity
-                      style={styles.removeImageButton}
-                      onPress={() => setImage(null)}
-                    >
-                      <X size={18} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <Camera size={28} color="#9CA3AF" />
-                    <AppText style={styles.placeholderText}>
-                      Tap to add a photo
-                    </AppText>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <View style={styles.modalActions}>
+      {/* ── Refactored Modal ── centered dialog style ── */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalKeyboardWrapper}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <AppText type="bold" style={styles.modalTitle}>
+                  New Suggestion
+                </AppText>
                 <TouchableOpacity
-                  style={styles.cancelButton}
                   onPress={() => setModalVisible(false)}
+                  style={styles.closeButton}
                 >
-                  <AppText type="bold" style={styles.cancelText}>
-                    Cancel
-                  </AppText>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.submitButton,
-                    isSubmitting && styles.submitButtonDisabled,
-                  ]}
-                  onPress={handleSubmit}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <AppText type="bold" style={styles.submitText}>
-                      Post Suggestion
-                    </AppText>
-                  )}
+                  <X size={24} color="#374151" />
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                <AppText style={styles.label}>Title *</AppText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Idea title"
+                  value={form.title}
+                  onChangeText={(text) =>
+                    setForm((prev) => ({ ...prev, title: text }))
+                  }
+                />
+
+                <AppText style={styles.label}>Description *</AppText>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Explain your idea..."
+                  value={form.description}
+                  onChangeText={(text) =>
+                    setForm((prev) => ({ ...prev, description: text }))
+                  }
+                  multiline
+                  textAlignVertical="top"
+                />
+
+                <AppText style={styles.label}>Photo (Optional)</AppText>
+                <TouchableOpacity
+                  style={styles.imagePicker}
+                  onPress={pickImage}
+                >
+                  {image ? (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image
+                        source={{ uri: image }}
+                        style={styles.previewImage}
+                      />
+                      <TouchableOpacity
+                        style={styles.removeImageButton}
+                        onPress={() => setImage(null)}
+                      >
+                        <X size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Camera size={28} color="#9CA3AF" />
+                      <AppText style={styles.placeholderText}>
+                        Add a photo
+                      </AppText>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => setModalVisible(false)}
+                  >
+                    <AppText type="bold" style={styles.cancelText}>
+                      Cancel
+                    </AppText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.submitButton,
+                      isSubmitting && styles.submitButtonDisabled,
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <AppText type="bold" style={styles.submitText}>
+                        Post Idea
+                      </AppText>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Extra bottom padding for keyboard */}
+                <View style={{ height: Platform.OS === "ios" ? 120 : 80 }} />
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -409,9 +436,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderColor: "#F3F4F6",
+    height: 60,
   },
-  headerTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerTitleContainer: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerText: { fontSize: 18, color: "#111827" },
+
+  // Search Bar Styles
+  searchHeader: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 16, color: "#111827" },
 
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   list: { padding: 16, paddingBottom: 100 },
@@ -489,10 +530,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
   },
 
   emptyState: { alignItems: "center", paddingHorizontal: 40 },
@@ -513,28 +550,46 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Modal
+  // ── Centered Modal Styles ───────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  modalContainer: {
+  modalKeyboardWrapper: {
+    width: "100%",
+    maxWidth: 520,
+    maxHeight: "92%",
+  },
+  modalContent: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 24,
-    maxHeight: "90%",
+    borderRadius: 20,
+    width: "100%",
+    maxHeight: "92%",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
   },
   modalTitle: { fontSize: 22, color: "#111827" },
   closeButton: { padding: 4 },
-
+  modalScrollContent: {
+    padding: 24,
+    paddingBottom: Platform.OS === "ios" ? 140 : 100,
+  },
   label: {
     fontSize: 15,
     fontWeight: "600",
@@ -553,7 +608,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   textArea: { height: 140 },
-
   imagePicker: {
     height: 180,
     borderRadius: 16,
@@ -582,7 +636,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   placeholderText: { color: "#9CA3AF", fontSize: 15 },
-
   modalActions: { flexDirection: "row", gap: 12, marginTop: 8 },
   cancelButton: {
     flex: 1,

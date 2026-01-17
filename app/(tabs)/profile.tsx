@@ -12,11 +12,11 @@ import {
   Platform,
   Animated,
   Modal,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
 import {
   User,
   Phone,
@@ -25,10 +25,13 @@ import {
   LogOut,
   CheckCircle2,
   Edit3,
-  AlignLeft,
   Eye,
-  Wallet,
   X,
+  ShieldCheck,
+  Wallet,
+  LifeBuoy,
+  ChevronRight,
+  Camera,
 } from "lucide-react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
@@ -36,8 +39,8 @@ import { AppText } from "@/src/ui/AppText";
 import {
   updateUserProfile,
   updateNotificationSettings,
-  clearUserError,
   fetchUserProfile,
+  updateProfilePicture,
 } from "@/src/redux/slices/userSlice";
 import { removeAuthToken } from "@/src/redux/services/secureStore";
 import { router } from "expo-router";
@@ -49,6 +52,7 @@ const ProfilePage = () => {
   const { user, loading } = useSelector((state: RootState) => state.user);
 
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -63,6 +67,55 @@ const ProfilePage = () => {
   const initials = `${user?.firstName?.charAt(0) || ""}${
     user?.lastName?.charAt(0) || ""
   }`.toUpperCase();
+
+  // --- Profile Photo Upload Logic ---
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "We need access to your gallery to update your photo.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setUploadingPhoto(true);
+      
+      try {
+        await dispatch(updateProfilePicture({
+          uri: asset.uri,
+          name: asset.fileName || "profile.jpg",
+          type: asset.mimeType || "image/jpeg",
+        })).unwrap();
+        Alert.alert("Success", "Profile photo updated successfully!");
+      } catch (err: any) {
+        Alert.alert("Upload Failed", err || "Could not update profile photo.");
+      } finally {
+        setUploadingPhoto(false);
+      }
+    }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          await removeAuthToken();
+          router.replace("/(auth)/sign-in");
+        },
+      },
+    ]);
+  };
 
   const handleToggle = async (
     category: "privacySettings" | "notificationPreferences",
@@ -91,11 +144,32 @@ const ProfilePage = () => {
       >
         {/* Hero Header */}
         <View style={styles.heroHeader}>
-          <View style={styles.avatarBackground}>
-            <AppText type="bold" style={styles.avatarInitials}>
-              {initials || "??"}
-            </AppText>
-          </View>
+          <TouchableOpacity 
+            onPress={handlePickImage} 
+            disabled={uploadingPhoto}
+            style={styles.avatarContainer}
+          >
+            <View style={styles.avatarBackground}>
+              {user?.profilePicture ? (
+                <Image 
+                  source={{ uri: user.profilePicture }} 
+                  style={styles.profileImage} 
+                />
+              ) : (
+                <AppText type="bold" style={styles.avatarInitials}>
+                  {initials || "??"}
+                </AppText>
+              )}
+            </View>
+            <View style={styles.cameraBadge}>
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Camera size={14} color="#FFF" strokeWidth={3} />
+              )}
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.nameSection}>
             <View style={styles.nameRow}>
               <AppText type="bold" style={styles.fullName}>
@@ -109,7 +183,7 @@ const ProfilePage = () => {
           </View>
         </View>
 
-        {/* Account Display Card */}
+        {/* Account Details Card */}
         <View style={styles.cardContainer}>
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -145,47 +219,94 @@ const ProfilePage = () => {
           </View>
         </View>
 
-        {/* Preferences Section */}
+        {/* Privacy & Notification Preferences Section */}
         <View style={styles.cardContainer}>
           <AppText type="bold" style={styles.sectionHeading}>
-            Preferences
+            Privacy & Notification Preferences
           </AppText>
+          <AppText style={styles.sectionSubheading}>
+            Control what information you share and which notifications you
+            receive
+          </AppText>
+
           <View style={styles.card}>
             <ToggleRow
               icon={<Eye size={18} color="#F59E0B" />}
-              label="Show name"
-              description="Visibility in donations"
+              label="Display my name in donations"
+              description="Others will see your name when you donate to goals"
               value={!!user?.privacySettings?.showNameInDonations}
               onToggle={() =>
                 handleToggle("privacySettings", "showNameInDonations")
               }
             />
             <View style={styles.divider} />
+
+            <ToggleRow
+              icon={<ShieldCheck size={18} color="#F59E0B" />}
+              label="Show my contact details"
+              description="Allow family members to see your phone number"
+              value={!!user?.privacySettings?.showContactDetailsToFamily}
+              onToggle={() =>
+                handleToggle("privacySettings", "showContactDetailsToFamily")
+              }
+            />
+            <View style={styles.divider} />
+
             <ToggleRow
               icon={<Bell size={18} color="#F59E0B" />}
-              label="Donations"
-              description="Alerts for family donations"
+              label="Donation notifications"
+              description="Get notified when family members donate"
               value={!!user?.notificationPreferences?.donationNotifications}
               onToggle={() =>
                 handleToggle("notificationPreferences", "donationNotifications")
               }
             />
+            <View style={styles.divider} />
+
+            <ToggleRow
+              icon={<Wallet size={18} color="#F59E0B" />}
+              label="Withdrawal notifications"
+              description="Get notified about fund withdrawals"
+              value={!!user?.notificationPreferences?.withdrawalNotifications}
+              onToggle={() =>
+                handleToggle(
+                  "notificationPreferences",
+                  "withdrawalNotifications"
+                )
+              }
+            />
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.signOutButton}
-          onPress={() => {
-            removeAuthToken();
-            router.replace("/(auth)/sign-in");
-          }}
-        >
+        {/* Help & Support Section */}
+        <View style={styles.cardContainer}>
+          <AppText type="bold" style={styles.sectionHeading}>
+            Help & Support
+          </AppText>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push("/(routers)/profile/support")}
+          >
+            <View style={styles.supportRow}>
+              <View style={styles.supportLeft}>
+                <LifeBuoy size={20} color="#F59E0B" />
+                <AppText style={styles.supportText} type="medium">
+                  Contact Support & FAQs
+                </AppText>
+              </View>
+              <ChevronRight size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign Out Button */}
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <LogOut size={20} color="#EF4444" />
           <AppText style={styles.signOutText}>Sign Out</AppText>
         </TouchableOpacity>
       </Animated.ScrollView>
 
-      {/* Edit Profile Modal (PageSheet) */}
+      {/* Edit Profile Modal */}
       <EditProfileModal
         visible={isEditModalVisible}
         onClose={() => setIsEditModalVisible(false)}
@@ -223,19 +344,15 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
 
   const handleSave = () => {
     if (!form.firstName.trim() || !form.lastName.trim()) {
-      return Alert.alert("Required", "First and last names are required.");
+      return Alert.alert("Required", "Name fields cannot be empty.");
     }
-
-    // Logic using .unwrap(), .then(), and .catch()
     dispatch(updateUserProfile(form))
       .unwrap()
       .then(() => {
-        Alert.alert("Success", "Profile updated successfully!");
-        onClose(); // Close modal on success
+        Alert.alert("Success", "Profile updated!");
+        onClose();
       })
-      .catch((err) => {
-        Alert.alert("Update Failed", err || "Something went wrong.");
-      });
+      .catch((err) => Alert.alert("Error", err || "Update failed."));
   };
 
   return (
@@ -246,19 +363,14 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
       onRequestClose={onClose}
     >
       <View style={styles.modalContainer}>
-        {/* Modal Top Bar */}
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.headerAction}>
+          <TouchableOpacity onPress={onClose}>
             <X size={24} color="#111827" />
           </TouchableOpacity>
           <AppText type="bold" style={styles.modalTitle}>
             Edit Profile
           </AppText>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={loading}
-            style={styles.headerAction}
-          >
+          <TouchableOpacity onPress={handleSave} disabled={loading}>
             {loading ? (
               <ActivityIndicator size="small" color="#F59E0B" />
             ) : (
@@ -273,28 +385,22 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-          >
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
             <InputField
               label="First Name"
               value={form.firstName}
               onChangeText={(t: string) => setForm({ ...form, firstName: t })}
-              placeholder="Enter first name"
             />
             <InputField
               label="Last Name"
               value={form.lastName}
               onChangeText={(t: string) => setForm({ ...form, lastName: t })}
-              placeholder="Enter last name"
             />
             <InputField
-              label="Phone Number"
+              label="Phone"
               value={form.phone}
               keyboardType="phone-pad"
               onChangeText={(t: string) => setForm({ ...form, phone: t })}
-              placeholder="Enter phone number"
             />
 
             <AppText style={styles.inputLabel}>Date of Birth</AppText>
@@ -305,7 +411,7 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
               <AppText
                 style={{ color: form.dateOfBirth ? "#111827" : "#9CA3AF" }}
               >
-                {form.dateOfBirth || "Select Date of Birth"}
+                {form.dateOfBirth || "Select Date"}
               </AppText>
             </TouchableOpacity>
 
@@ -315,7 +421,7 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
                   form.dateOfBirth ? new Date(form.dateOfBirth) : new Date()
                 }
                 mode="date"
-                display={Platform.OS === "ios" ? "spinner" : "default"}
+                display="spinner"
                 onChange={(e, d) => {
                   setShowDatePicker(false);
                   if (d)
@@ -331,13 +437,9 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
               label="Bio"
               value={form.bio}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
+              style={{ height: 80 }}
               onChangeText={(t: string) => setForm({ ...form, bio: t })}
-              placeholder="Tell us about yourself..."
-              style={[
-                styles.modalInput,
-                { height: 100, textAlignVertical: "top" },
-              ]}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -346,7 +448,7 @@ const EditProfileModal = ({ visible, onClose, user, loading }: any) => {
   );
 };
 
-// --- SMALLER COMPONENTS ---
+// --- HELPER COMPONENTS ---
 
 const DetailRow = ({ icon, label, value }: any) => (
   <View style={styles.fieldRow}>
@@ -373,7 +475,7 @@ const ToggleRow = ({ icon, label, description, value, onToggle }: any) => (
   <View style={styles.toggleContainer}>
     <View style={styles.toggleLeft}>
       {icon}
-      <View style={{ flex: 1, paddingRight: 10 }}>
+      <View style={{ flex: 1 }}>
         <AppText type="bold" style={styles.toggleLabel}>
           {label}
         </AppText>
@@ -389,12 +491,15 @@ const ToggleRow = ({ icon, label, description, value, onToggle }: any) => (
   </View>
 );
 
-// --- STYLES ---
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
   scrollContent: { paddingBottom: 40 },
   heroHeader: { alignItems: "center", paddingTop: 20, paddingBottom: 24 },
+  
+  // Updated Avatar Styles
+  avatarContainer: {
+    position: 'relative',
+  },
   avatarBackground: {
     width: 80,
     height: 80,
@@ -404,8 +509,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 2,
     borderColor: "#FBBF24",
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   avatarInitials: { fontSize: 32, color: "#D97706" },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#F59E0B',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+
   nameSection: { alignItems: "center", marginTop: 10 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   fullName: { fontSize: 22, color: "#111827" },
@@ -445,7 +570,13 @@ const styles = StyleSheet.create({
   sectionHeading: {
     fontSize: 17,
     color: "#111827",
-    marginBottom: 10,
+    marginBottom: 4,
+    paddingLeft: 4,
+  },
+  sectionSubheading: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginBottom: 12,
     paddingLeft: 4,
   },
   toggleContainer: {
@@ -467,27 +598,37 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: "#FEF2F2",
     borderRadius: 12,
+    marginBottom: 120,
   },
   signOutText: { color: "#EF4444", fontSize: 16, fontWeight: "600" },
-
-  // Modal Styles
+  supportRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  supportLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  supportText: {
+    fontSize: 15,
+    color: "#111827",
+  },
   modalContainer: { flex: 1, backgroundColor: "#FFF" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 18,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  headerAction: { minWidth: 50 },
   modalTitle: { fontSize: 18, color: "#111827" },
   modalInput: {
     backgroundColor: "#F9FAFB",
     borderRadius: 12,
-    paddingHorizontal: 16, // Requested Padding
-    paddingVertical: 14, // Requested Padding
+    padding: 14,
     fontSize: 16,
     color: "#111827",
     borderWidth: 1,
@@ -496,8 +637,7 @@ const styles = StyleSheet.create({
   modalDateInput: {
     backgroundColor: "#F9FAFB",
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 14,
     marginBottom: 18,
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -507,7 +647,6 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     marginBottom: 6,
     fontWeight: "600",
-    paddingLeft: 4,
   },
 });
 

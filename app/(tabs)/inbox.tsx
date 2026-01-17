@@ -1,28 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  RefreshControl,
+  TextInput,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { RootState } from "@/src/redux/store";
 import { useSocket } from "@/src/contexts/SocketProvider";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText } from "@/src/ui/AppText";
-import { User as UserIcon, Search } from "lucide-react-native";
+import { User as UserIcon, Search, Filter } from "lucide-react-native";
 
-interface Conversation {
-  _id: string; // This is the roomUuid
+export interface Conversation {
+  _id: string;
   lastMessage: string;
   timestamp: string;
   senderName: string;
   senderId: string;
+  receiverId: string;
   unreadCount: number;
-  // Note: In a real app, you'd likely join with a User collection
-  // to get the receiverName accurately. For now, we use senderName.
+  profilePicture?: string;
 }
 
 const InboxScreen = () => {
@@ -31,46 +34,122 @@ const InboxScreen = () => {
   const { user } = useSelector((state: RootState) => state.user);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [filteredConversations, setFilteredConversations] = useState<
+    Conversation[]
+  >([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
+
+  const fetchConversations = useCallback(() => {
+    if (socket && user?._id) {
+      socket.emit("get_conversations", { userId: user._id });
+    }
+  }, [socket, user?._id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [fetchConversations])
+  );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchConversations();
+  }, [fetchConversations]);
 
   useEffect(() => {
     if (!socket || !user?._id) return;
 
-    // 1. Request the conversation list
-    socket.emit("get_conversations", { userId: user._id });
-
-    // 2. Listen for the list response
     socket.on("conversations_list", (data: Conversation[]) => {
       setConversations(data);
+      setFilteredConversations(data);
       setLoading(false);
+      setRefreshing(false);
     });
 
-    // 3. Listen for real-time unread updates to refresh the list
-    const updateHandler = () => {
-      socket.emit("get_conversations", { userId: user._id });
+    const handleLatestMsg = (updatedConv: any) => {
+      setConversations((prev) => {
+        const existingIndex = prev.findIndex((c) => c._id === updatedConv._id);
+        const updatedList = [...prev];
+
+        if (existingIndex !== -1) {
+          const existingItem = updatedList[existingIndex];
+          const isMe = updatedConv.senderId === user._id;
+
+          const mergedItem = {
+            ...existingItem,
+            lastMessage: updatedConv.lastMessage,
+            timestamp: updatedConv.timestamp,
+            profilePicture:
+              updatedConv.profilePicture || existingItem.profilePicture,
+            unreadCount: isMe
+              ? existingItem.unreadCount
+              : (existingItem.unreadCount || 0) + 1,
+          };
+
+          updatedList.splice(existingIndex, 1);
+          updatedList.unshift(mergedItem);
+        } else {
+          updatedList.unshift({
+            ...updatedConv,
+            unreadCount: updatedConv.senderId === user._id ? 0 : 1,
+          });
+        }
+        return updatedList;
+      });
     };
 
-    socket.on(`unread_update_${user._id}`, updateHandler);
-    socket.on(`latest_msg_${user._id}`, updateHandler);
+    socket.on(`latest_msg_${user._id}`, handleLatestMsg);
 
     return () => {
       socket.off("conversations_list");
-      socket.off(`unread_update_${user._id}`, updateHandler);
-      socket.off(`latest_msg_${user._id}`, updateHandler);
+      socket.off(`latest_msg_${user._id}`, handleLatestMsg);
     };
   }, [socket, user?._id]);
 
+  // Search and filter logic
+  useEffect(() => {
+    let filtered = conversations;
+
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (conv) =>
+          conv.senderName.toLowerCase().includes(lowerQuery) ||
+          conv.lastMessage.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    setFilteredConversations(filtered);
+  }, [searchQuery, conversations]);
+
+  const toggleFilter = () => {
+    setShowFilter(!showFilter);
+    // Add your filter logic here (e.g., unread only, recent, etc.)
+    if (!showFilter) {
+      // Example filter: show unread only
+      const unreadOnly = conversations.filter((c) => c.unreadCount > 0);
+      setFilteredConversations(unreadOnly);
+    } else {
+      setFilteredConversations(conversations);
+    }
+  };
+
   const handleConversationPress = (item: Conversation) => {
-    // Generate the same room UUID logic
-    // If the room _id is already the combined string, use it directly
+    const otherUserId =
+      item.senderId === user?._id ? item.receiverId : item.senderId;
+
     router.push({
       pathname: "/(routers)/messages/chat",
       params: {
-        uuid: item._id, // The Room UUID
+        uuid: item._id,
         senderId: user?._id,
         senderName: `${user?.firstName} ${user?.lastName}`,
-        receiverId: item.senderId === user?._id ? "other_id" : item.senderId, // Logic depends on your aggregation
+        receiverId: otherUserId,
         receiverName: item.senderName,
+        receiverProfilePicture: item.profilePicture || "",
       },
     });
   };
@@ -87,7 +166,16 @@ const InboxScreen = () => {
         onPress={() => handleConversationPress(item)}
       >
         <View style={styles.avatar}>
-          <UserIcon size={24} color="#64748B" />
+          {item.profilePicture ? (
+            <Image
+              source={{ uri: item.profilePicture }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <View style={styles.placeholderIcon}>
+              <UserIcon size={28} color="#94A3B8" />
+            </View>
+          )}
         </View>
 
         <View style={styles.content}>
@@ -126,24 +214,44 @@ const InboxScreen = () => {
         <AppText type="bold" style={styles.headerTitle}>
           Messages
         </AppText>
-        <TouchableOpacity style={styles.iconBtn}>
-          <Search size={22} color="#111827" />
-        </TouchableOpacity>
+        <View style={styles.headerIcons}>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Search size={22} color="#111827" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={toggleFilter}>
+            <Filter size={22} color="#111827" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {loading ? (
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search conversations..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
+
+      {loading && !refreshing ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#111827" />
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#111827"]}
+              tintColor="#111827"
+            />
+          }
           ListEmptyComponent={
             <View style={styles.center}>
-              <AppText style={{ color: "#64748B" }}>No messages yet.</AppText>
+              <AppText style={{ color: "#64748B" }}>No messages found.</AppText>
             </View>
           }
         />
@@ -163,8 +271,17 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F1F5F9",
   },
   headerTitle: { fontSize: 24, color: "#111827" },
+  headerIcons: { flexDirection: "row", gap: 8 },
   iconBtn: { padding: 8, backgroundColor: "#F8FAFC", borderRadius: 12 },
-  list: { paddingVertical: 8 },
+  searchInput: {
+    margin: 16,
+    padding: 12,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    fontSize: 16,
+    color: "#111827",
+  },
+  list: { paddingVertical: 8, flexGrow: 1 },
   card: {
     flexDirection: "row",
     paddingHorizontal: 16,
@@ -176,9 +293,10 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
+    overflow: "hidden",
   },
+  avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  placeholderIcon: { flex: 1, justifyContent: "center", alignItems: "center" },
   content: { flex: 1, marginLeft: 12, justifyContent: "center" },
   row: {
     flexDirection: "row",
@@ -194,7 +312,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  unreadText: { color: "#111827", fontWeight: "600" },
+  unreadText: { color: "#111827", fontWeight: "700" },
   badge: {
     backgroundColor: "#EF4444",
     minWidth: 20,
@@ -209,7 +327,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 100,
+    marginTop: 50,
   },
 });
 

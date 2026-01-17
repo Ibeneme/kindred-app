@@ -11,6 +11,8 @@ import pollSlice from "../slices/pollSlice";
 import notificationSlice from "../slices/notificationSlice";
 import userSlice from "../slices/userSlice";
 import donationSlice from "../slices/donationSlice";
+import familyContentSlice from '../slices/familyContentSlice'
+import familyMemberSlice from "../slices/familyMemberSlice";
 
 export const store = configureStore({
     reducer: {
@@ -24,7 +26,9 @@ export const store = configureStore({
         polls: pollSlice,
         notifications: notificationSlice,
         user: userSlice,
-        donations: donationSlice
+        donations: donationSlice,
+        familyContent: familyContentSlice,
+        familyMembers: familyMemberSlice
     },
 });
 

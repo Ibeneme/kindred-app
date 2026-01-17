@@ -57,7 +57,7 @@ export const login = createAsyncThunk(
             }
 
             return {
-                token, // <-- PASSING TOKEN HERE
+                token,
                 user: {
                     id: user.id || user._id,
                     email: user.email,
@@ -66,9 +66,8 @@ export const login = createAsyncThunk(
                 },
             };
         } catch (err: any) {
-            const message = err.response?.data?.message || "Login failed";
-            console.error("LOGIN ERROR:", message);
-            return rejectWithValue(message);
+          console.warn(err, 'errrrrr')
+            return err;
         }
     }
 );
