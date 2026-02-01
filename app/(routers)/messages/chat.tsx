@@ -13,12 +13,11 @@ import {
   Pressable,
   ActivityIndicator,
   Keyboard,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { Audio } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
-
-// Use legacy filesystem API
 import * as FileSystemLegacy from "expo-file-system/legacy";
 
 import { AppText } from "@/src/ui/AppText";
@@ -38,6 +37,7 @@ import {
   CheckCheck,
   Clock,
   Edit,
+  Video,
 } from "lucide-react-native";
 import {
   SafeAreaView,
@@ -116,15 +116,14 @@ const ChatScreen = () => {
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [currentImageUri, setCurrentImageUri] = useState<string>("");
 
-  // Editing
+  // Editing & message options
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-
-  // Options modal
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [messageOptionsVisible, setMessageOptionsVisible] = useState(false);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingAnim = useRef(new Animated.Value(0)).current;
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -132,7 +131,7 @@ const ChatScreen = () => {
     }, 200);
   }, []);
 
-  // Configure Audio
+  // Audio setup
   useEffect(() => {
     (async () => {
       try {
@@ -190,9 +189,24 @@ const ChatScreen = () => {
       if (data.isTyping) {
         setIsOtherUserTyping(true);
         setTypingName(data.name || "Someone");
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(typingAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(typingAnim, {
+              toValue: 0.3,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
       } else {
         setIsOtherUserTyping(false);
         setTypingName("");
+        typingAnim.setValue(0);
       }
     });
 
@@ -256,70 +270,115 @@ const ChatScreen = () => {
     };
   }, [recording, previewSound, stopTyping]);
 
+  // ── Voice Recording Functions ───────────────────────────────────────────────
+
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== "granted") return;
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Microphone access is required.");
+        return;
+      }
+
+      // Clean up previous states
+      if (recording) {
+        await recording.stopAndUnloadAsync().catch(() => {});
+      }
+      if (previewSound) {
+        await previewSound.unloadAsync().catch(() => {});
+      }
+      setRecording(null);
+      setPreviewSound(null);
+      setPreviewUri(null);
+      setIsPreviewPlaying(false);
+      setRecordDuration(0);
+
       const newRec = new Audio.Recording();
       await newRec.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       await newRec.startAsync();
+
       setRecording(newRec);
       setIsRecording(true);
       setRecordDuration(0);
-      timerRef.current = setInterval(
-        () => setRecordDuration((prev) => prev + 1),
-        1000
-      );
+
+      timerRef.current = setInterval(() => {
+        setRecordDuration((prev) => prev + 1);
+      }, 1000);
     } catch (err) {
-      console.error(err);
+      console.error("Start recording error:", err);
+      Alert.alert("Error", "Failed to start recording.");
     }
   };
 
-  const stopAndPreview = async () => {
+  const stopRecording = async () => {
     if (!recording) return;
+
     setIsRecording(false);
-    clearInterval(timerRef.current!);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       if (uri) {
         setPreviewUri(uri);
-        const { sound } = await Audio.Sound.createAsync({ uri });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri },
+          { shouldPlay: false }
+        );
         setPreviewSound(sound);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Stop recording error:", err);
     } finally {
       setRecording(null);
     }
   };
 
+  const reRecord = () => {
+    cancelPreview();
+    startRecording();
+  };
+
   const togglePreviewPlayback = async () => {
     if (!previewSound) return;
-    if (isPreviewPlaying) {
-      await previewSound.pauseAsync();
-      setIsPreviewPlaying(false);
-    } else {
-      await previewSound.replayAsync();
-      setIsPreviewPlaying(true);
-      previewSound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status.didJustFinish) setIsPreviewPlaying(false);
-      });
+
+    try {
+      if (isPreviewPlaying) {
+        await previewSound.pauseAsync();
+        setIsPreviewPlaying(false);
+      } else {
+        await previewSound.replayAsync();
+        setIsPreviewPlaying(true);
+
+        previewSound.setOnPlaybackStatusUpdate((status: any) => {
+          if (status.didJustFinish) {
+            setIsPreviewPlaying(false);
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Playback error:", err);
     }
   };
 
-  const cancelVoicePreview = () => {
-    previewSound?.unloadAsync().catch(() => {});
+  const cancelPreview = async () => {
+    if (previewSound) {
+      await previewSound.unloadAsync().catch(() => {});
+    }
     setPreviewSound(null);
     setPreviewUri(null);
-    setRecordDuration(0);
     setIsPreviewPlaying(false);
+    setRecordDuration(0);
   };
 
-  const handleSendVoice = async () => {
+  const sendVoiceNote = async () => {
     if (!previewUri || !socket) return;
+
     const msgUuid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const optimisticMsg: Message = {
       uuid: msgUuid,
@@ -334,8 +393,10 @@ const ChatScreen = () => {
       isRead: false,
       canEdit: false,
     };
+
     setMessages((prev) => [...prev, optimisticMsg]);
     scrollToBottom();
+
     try {
       const base64 = await fileToBase64(previewUri);
       socket.emit("send_message", {
@@ -350,13 +411,18 @@ const ChatScreen = () => {
         duration: recordDuration,
         receiverProfilePicture: receiverProfilePicture || "",
       });
-      cancelVoicePreview();
+
+      cancelPreview();
     } catch (err) {
+      console.error("Send voice failed:", err);
       setMessages((prev) =>
         prev.map((m) => (m.uuid === msgUuid ? { ...m, status: "failed" } : m))
       );
+      Alert.alert("Error", "Could not send voice note");
     }
   };
+
+  // ── Other functions (image, send text, edit, delete) remain unchanged ──────
 
   const handlePickImage = async () => {
     try {
@@ -496,13 +562,19 @@ const ChatScreen = () => {
   };
 
   const startEditMessage = () => {
-    if (!selectedMessage || !selectedMessage.canEdit) return;
+    if (
+      !selectedMessage ||
+      !selectedMessage.canEdit ||
+      selectedMessage.messageType !== "text"
+    )
+      return;
     setEditingMessageId(selectedMessage.uuid);
     setEditText(selectedMessage.message);
     setMessageOptionsVisible(false);
     setSelectedMessage(null);
   };
 
+  // ── Render single message ────────────────────────────────────────────────────
   const renderMessageItem = useCallback(
     ({ item }: { item: Message }) => {
       const isMe = item.senderId === senderId;
@@ -538,6 +610,7 @@ const ChatScreen = () => {
                 </View>
               </TouchableOpacity>
             )}
+
             {item.messageType === "voice" && item.audioUri && (
               <TouchableOpacity
                 style={styles.voiceRow}
@@ -576,6 +649,7 @@ const ChatScreen = () => {
                 </AppText>
               </TouchableOpacity>
             )}
+
             {item.messageType === "text" && (
               <AppText
                 style={[
@@ -586,6 +660,7 @@ const ChatScreen = () => {
                 {item.message}
               </AppText>
             )}
+
             {isMe && (
               <View style={styles.statusRow}>
                 {item.status === "pending" && <Clock size={14} color={GRAY} />}
@@ -605,7 +680,7 @@ const ChatScreen = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header - Outside KeyboardAvoidingView to remain at top */}
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -613,6 +688,7 @@ const ChatScreen = () => {
         >
           <ChevronLeft size={28} color="#111827" />
         </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.profileContainer}
           onPress={() =>
@@ -632,21 +708,40 @@ const ChatScreen = () => {
               <UserIcon size={20} color="#64748B" />
             </View>
           )}
-          <View style={{ marginLeft: 8 }}>
-            <AppText type="bold" style={styles.receiverName}>
+          <View style={{ marginLeft: 12 }}>
+            <AppText
+              type="bold"
+              style={[
+                styles.receiverName,
+                { textDecorationLine: "underline", color: PRIMARY_YELLOW },
+              ]}
+            >
               {receiverName || "Chat"}
             </AppText>
             <AppText style={styles.statusText}>
-              {isOtherUserTyping ? `${typingName} is typing...` : ""}
+              {isOtherUserTyping ? (
+                <Animated.Text style={{ opacity: typingAnim }}>
+                  {typingName} is typing...
+                </Animated.Text>
+              ) : null}
             </AppText>
           </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert("Video Call", "Video call feature is Coming Soon!")
+          }
+          style={{ padding: 8 }}
+        >
+          <Video size={26} color="#111827" />
         </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 10 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -658,7 +753,7 @@ const ChatScreen = () => {
           onLayout={scrollToBottom}
         />
 
-        {/* Input area combined with Options */}
+        {/* Bottom input area */}
         <View style={styles.bottomContainer}>
           {showOptions && (
             <View style={styles.optionsContainer}>
@@ -673,16 +768,13 @@ const ChatScreen = () => {
                 </View>
                 <AppText style={styles.optionLabel}>Photo</AppText>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.optionItem}
-                onPressIn={startRecording}
-                onPressOut={stopAndPreview}
+                onPress={startRecording}
               >
                 <View
-                  style={[
-                    styles.optionIcon,
-                    { backgroundColor: isRecording ? "#EF4444" : "#10B981" },
-                  ]}
+                  style={[styles.optionIcon, { backgroundColor: "#10B981" }]}
                 >
                   <Mic color="#FFF" size={28} />
                 </View>
@@ -692,45 +784,72 @@ const ChatScreen = () => {
           )}
 
           <View style={styles.inputBar}>
+            {/* LIVE RECORDING */}
             {isRecording && (
-              <View style={styles.recordingIndicator}>
-                <View style={styles.redDot} />
-                <AppText style={styles.recordingText}>
-                  Recording {recordDuration}s
-                </AppText>
-                <TouchableOpacity onPress={stopAndPreview}>
-                  <Square size={26} color="#EF4444" fill="#EF4444" />
+              <View style={styles.recordingActiveContainer}>
+                <View style={styles.recordingInfo}>
+                  <View style={styles.liveDot} />
+                  <AppText style={styles.recordingLabel}>Recording...</AppText>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.stopButton}
+                  onPress={stopRecording}
+                >
+                  <Square size={36} color="#FFF" fill="#EF4444" />
                 </TouchableOpacity>
               </View>
             )}
 
+            {/* VOICE PREVIEW */}
             {previewUri && !isRecording && (
-              <View style={styles.previewContainer}>
-                <TouchableOpacity onPress={cancelVoicePreview}>
-                  <Trash2 size={24} color="#EF4444" />
-                </TouchableOpacity>
+              <View style={styles.voicePreviewContainer}>
                 <TouchableOpacity
-                  style={styles.previewPlayBtn}
-                  onPress={togglePreviewPlayback}
+                  onPress={cancelPreview}
+                  style={styles.cancelIcon}
                 >
-                  {isPreviewPlaying ? (
-                    <Pause size={22} color="#111827" />
-                  ) : (
-                    <Play size={22} color="#111827" />
-                  )}
-                  <AppText style={{ marginLeft: 10, fontWeight: "600" }}>
-                    Voice Note • {recordDuration}s
-                  </AppText>
+                  <Trash2 size={26} color="#EF4444" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.sendBtn}
-                  onPress={handleSendVoice}
-                >
-                  <Send size={24} color="#FFF" />
-                </TouchableOpacity>
+
+                <View style={styles.previewCenter}>
+                  <TouchableOpacity
+                    onPress={togglePreviewPlayback}
+                    style={styles.playPauseBtn}
+                  >
+                    {isPreviewPlaying ? (
+                      <>
+                        <Pause size={28} color="#111827" />
+                        <AppText style={styles.previewStatus}>
+                          Playing...
+                        </AppText>
+                      </>
+                    ) : (
+                      <>
+                        <Play size={28} color="#111827" />
+                        <AppText style={styles.previewStatus}>
+                          Voice Note
+                        </AppText>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.previewActions}>
+                  <TouchableOpacity onPress={reRecord}>
+                    <AppText style={styles.reRecordText}>Re-record</AppText>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.sendFinalBtn}
+                    onPress={sendVoiceNote}
+                  >
+                    <Send size={26} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
+            {/* Normal text input */}
             {!isRecording && !previewUri && (
               <View style={styles.textInputContainer}>
                 <TouchableOpacity
@@ -746,6 +865,7 @@ const ChatScreen = () => {
                     <Plus size={24} color={GRAY} />
                   )}
                 </TouchableOpacity>
+
                 <TextInput
                   style={styles.input}
                   placeholder={
@@ -756,7 +876,8 @@ const ChatScreen = () => {
                     if (editingMessageId) setEditText(text);
                     else {
                       setInputText(text);
-                      text.trim().length > 0 ? emitTyping() : stopTyping();
+                      if (text.trim().length > 0) emitTyping();
+                      else stopTyping();
                     }
                   }}
                   onFocus={() => {
@@ -767,6 +888,7 @@ const ChatScreen = () => {
                   onBlur={stopTyping}
                   multiline
                 />
+
                 <TouchableOpacity
                   onPress={handleSendOrEditMessage}
                   style={styles.sendBtn}
@@ -782,7 +904,7 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Modals remain the same */}
+      {/* Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
         transparent
@@ -803,6 +925,7 @@ const ChatScreen = () => {
         </View>
       </Modal>
 
+      {/* Message Options Modal */}
       <Modal
         visible={messageOptionsVisible}
         transparent
@@ -824,6 +947,7 @@ const ChatScreen = () => {
                   <AppText style={styles.optionText}>Edit Message</AppText>
                 </TouchableOpacity>
               )}
+
             <TouchableOpacity
               style={styles.optionRow}
               onPress={() => handleDeleteMessage(false)}
@@ -833,6 +957,7 @@ const ChatScreen = () => {
                 Delete for Me
               </AppText>
             </TouchableOpacity>
+
             {selectedMessage?.canEdit && (
               <TouchableOpacity
                 style={styles.optionRow}
@@ -844,6 +969,7 @@ const ChatScreen = () => {
                 </AppText>
               </TouchableOpacity>
             )}
+
             <TouchableOpacity
               style={styles.cancelRow}
               onPress={() => setMessageOptionsVisible(false)}
@@ -857,43 +983,46 @@ const ChatScreen = () => {
   );
 };
 
+// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
-    zIndex: 10,
   },
-  backButton: { padding: 4 },
+  backButton: { padding: 8 },
   profileContainer: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
     marginLeft: 12,
   },
-  avatar: { width: 40, height: 40, borderRadius: 20 },
+  avatar: { width: 44, height: 44, borderRadius: 22 },
   avatarFallback: {
     backgroundColor: "#F1F5F9",
     justifyContent: "center",
     alignItems: "center",
   },
-  receiverName: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  statusText: { fontSize: 12, color: "#10B981" },
-  messagesList: { padding: 16, paddingBottom: 20 },
-  messageContainer: { marginVertical: 4, maxWidth: "80%" },
+  receiverName: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  statusText: { fontSize: 13, color: "#10B981", marginTop: 2 },
+  messagesList: { paddingHorizontal: 16, paddingBottom: 20 },
+  messageContainer: { marginVertical: 6, maxWidth: "80%" },
   leftContainer: { alignSelf: "flex-start" },
   rightContainer: { alignSelf: "flex-end" },
-  bubble: { padding: 12, borderRadius: 18, overflow: "hidden" },
+  bubble: { padding: 12, borderRadius: 20, overflow: "hidden" },
   myBubble: { backgroundColor: PRIMARY_YELLOW },
   theirBubble: { backgroundColor: "#E2E8F0" },
   messageText: { fontSize: 16 },
   myText: { color: "#111827" },
   theirText: { color: "#1E293B" },
-  messageImage: { width: 240, height: 240, borderRadius: 14 },
-  imageWrapper: { borderRadius: 14, overflow: "hidden" },
+  messageImage: { width: 240, height: 240, borderRadius: 16 },
+  imageWrapper: { borderRadius: 16, overflow: "hidden" },
   pendingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -906,7 +1035,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
-  voiceLabel: { fontSize: 15, fontWeight: "500" },
+  voiceLabel: { fontSize: 15, fontWeight: "500", marginLeft: 12 },
   statusRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 4 },
   bottomContainer: {
     backgroundColor: "#FFF",
@@ -914,20 +1043,102 @@ const styles = StyleSheet.create({
     borderTopColor: "#F1F5F9",
   },
   inputBar: { padding: 12 },
-  addBtn: { padding: 8 },
+  recordingActiveContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 28,
+    marginBottom: 12,
+  },
+  recordingInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  liveDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#EF4444",
+  },
+  recordingLabel: {
+    color: "#DC2626",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  durationText: {
+    color: "#DC2626",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  stopButton: {
+    backgroundColor: "#EF4444",
+    borderRadius: 30,
+    padding: 14,
+  },
+  voicePreviewContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0FDF4",
+    padding: 16,
+    borderRadius: 28,
+    marginBottom: 12,
+  },
+  cancelIcon: {
+    padding: 8,
+  },
+  previewCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  playPauseBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  previewStatus: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  previewActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+  },
+  reRecordText: {
+    color: PRIMARY_YELLOW_DARK,
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  sendFinalBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: PRIMARY_YELLOW_DARK,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  textInputContainer: { flexDirection: "row", alignItems: "center" },
+  addBtn: { padding: 12 },
   input: {
     flex: 1,
     backgroundColor: "#F1F5F9",
     borderRadius: 24,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     maxHeight: 120,
     marginHorizontal: 8,
+    fontSize: 16,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: PRIMARY_YELLOW_DARK,
     justifyContent: "center",
     alignItems: "center",
@@ -941,40 +1152,14 @@ const styles = StyleSheet.create({
   },
   optionItem: { alignItems: "center" },
   optionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 6,
   },
   optionLabel: { fontSize: 13, color: "#374151" },
-  recordingIndicator: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEE2E2",
-    padding: 12,
-    borderRadius: 24,
-  },
-  redDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#EF4444",
-    marginRight: 10,
-  },
-  recordingText: { flex: 1, color: "#DC2626", fontWeight: "700" },
-  previewContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F0FDF4",
-    padding: 12,
-    borderRadius: 24,
-  },
-  previewPlayBtn: { flexDirection: "row", alignItems: "center", flex: 1 },
   imageViewerContainer: {
     flex: 1,
     backgroundColor: "#000",
@@ -983,7 +1168,6 @@ const styles = StyleSheet.create({
   },
   closeImageBtn: { position: "absolute", top: 50, right: 20, zIndex: 10 },
   fullImage: { width: SCREEN_WIDTH, height: "80%" },
-  textInputContainer: { flexDirection: "row", alignItems: "center" },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -991,21 +1175,21 @@ const styles = StyleSheet.create({
   },
   messageOptionsModal: {
     backgroundColor: "#FFF",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingVertical: 20,
   },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
   cancelRow: { paddingVertical: 16, alignItems: "center" },
   optionText: { fontSize: 16, marginLeft: 16 },
-  cancelText: { color: "#EF4444", fontWeight: "600" },
+  cancelText: { color: "#EF4444", fontWeight: "700", fontSize: 16 },
 });
 
 export default ChatScreen;

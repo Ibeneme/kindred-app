@@ -92,7 +92,16 @@ interface FormFieldConfig {
   key: string;
   label: string;
   placeholder?: string;
-  type: "text" | "textarea" | "date" | "switch" | "dropdown" | "number";
+  type:
+    | "text"
+    | "textarea"
+    | "date"
+    | "switch"
+    | "dropdown"
+    | "number"
+    | any
+    | string
+    | never;
   options?: { label: string; value: string }[];
   required?: boolean;
 }
@@ -1019,8 +1028,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxHeight: "100%",
     overflow: "hidden",
-
-
   },
   modalHeader: {
     flexDirection: "row",

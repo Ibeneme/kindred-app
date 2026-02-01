@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   ScrollView,
@@ -7,125 +7,84 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Share,
+  Clipboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import {
   ChevronLeft,
   MailPlus,
   Info,
   Search,
-  UserCheck,
+  Share2,
+  Copy,
+  Hash,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
-import { AppDispatch, RootState } from "@/src/redux/store";
+import { AppDispatch } from "@/src/redux/store";
 import {
   replaceFamilyMembers,
   getFamilyById,
 } from "@/src/redux/slices/familySlice";
-import { fetchAllUsers } from "@/src/redux/slices/userSlice";
 
 const InviteMembersPage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-  const { familyId, isOwner } = useLocalSearchParams();
-  const userIsOwner = isOwner === "true";
 
-  const { users, loading: usersLoading } = useSelector(
-    (state: RootState) => state.users // assuming your user slice is called "users"
-  );
+  // (Edit 17) Extract familyCode from params
+  const { familyId, isOwner, familyName, familyCode } = useLocalSearchParams();
+  const userIsOwner = isOwner === "true";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [foundUser, setFoundUser] = useState<any | null>(null);
 
-  useEffect(() => {
-    if (!users || users.length === 0) {
-      dispatch(fetchAllUsers());
+  // The instruction message telling them to download Kindred and use the specific code
+  const inviteMessage = `Hey! I'm inviting you to join our family group "${
+    familyName || "Family"
+  }" on the Kindred App. 
+
+1. Search for "Kindred" on the App Store or Play Store and download it.
+2. Sign up and select "Join Family".
+3. Enter this Family Code to join: ${familyCode || familyId}
+
+See you there!`;
+
+  const handleShareInvite = async () => {
+    try {
+      await Share.share({ message: inviteMessage });
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
     }
-  }, [dispatch, users]);
-
-  // Search logic: by email or phone
-  useEffect(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      setFoundUser(null);
-      return;
-    }
-
-    // Try to find user by email or phone
-    const match = users.find((u: any) => {
-      const email = (u.email || "").toLowerCase();
-      const phone = (u.phone || u.phoneNumber || "")
-        .toLowerCase()
-        .replace(/[\s\-\+]/g, ""); // normalize
-      const queryNoSpace = q.replace(/[\s\-\+]/g, "");
-
-      return email === q || phone === queryNoSpace;
-    });
-
-    setFoundUser(match || null);
-  }, [searchQuery, users]);
-
-  const isValidInput = (input: string) => {
-    const trimmed = input.trim();
-    // Rough validation: either looks like email or like phone
-    const looksLikeEmail =
-      trimmed.includes("@") && trimmed.includes(".") && trimmed.length > 5;
-    const looksLikePhone = /^\+?\d{8,15}$/.test(
-      trimmed.replace(/[\s\-\(\)]/g, "")
-    );
-    return looksLikeEmail || looksLikePhone;
   };
 
-  const getInviteEmail = () => {
-    if (foundUser) {
-      return foundUser.email; // prefer email of found user
-    }
-    // otherwise use whatever was typed (hopefully email)
-    return searchQuery.trim();
+  const copyToClipboard = () => {
+    Clipboard.setString(inviteMessage);
+    Alert.alert("Copied!", "Invite instructions and code copied to clipboard.");
   };
 
   const handleInvite = () => {
     if (!familyId || !userIsOwner) return;
-
-    const emailToInvite = getInviteEmail();
-
-    if (!emailToInvite || !emailToInvite.includes("@")) {
-      Alert.alert(
-        "Invalid Input",
-        "Please enter a valid email address to send invitation."
-      );
+    const email = searchQuery.trim();
+    if (!email.includes("@")) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
 
     setIsSaving(true);
-
     dispatch(
-      replaceFamilyMembers({
-        familyId: familyId as string,
-        emails: [emailToInvite],
-      })
+      replaceFamilyMembers({ familyId: familyId as string, emails: [email] })
     )
       .unwrap()
       .then(() => {
         dispatch(getFamilyById(familyId as string));
-        Alert.alert("Success", `Invitation sent to ${emailToInvite}`);
+        Alert.alert("Success", `Official email invite sent to ${email}`);
         router.back();
       })
-      .catch((error) => {
-        Alert.alert(
-          "Invite Failed",
-          typeof error === "string" ? error : error?.message || "Server error"
-        );
-      })
+      .catch((err) => Alert.alert("Invite Failed", err?.message || "Error"))
       .finally(() => setIsSaving(false));
   };
-
-  const placeholderText = searchQuery.includes("@")
-    ? "Enter email address..."
-    : "Enter phone number or email...";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -136,51 +95,76 @@ const InviteMembersPage = () => {
         >
           <ChevronLeft size={22} color="#111827" />
         </TouchableOpacity>
-
         <View style={styles.headerTitleContainer}>
           <AppText type="bold" style={styles.headerTitle}>
             Invite Member
           </AppText>
-          <AppText style={styles.headerSubtitle}>By email or phone</AppText>
+          <AppText style={styles.headerSubtitle}>{familyName}</AppText>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollBody}>
+        <View style={styles.guideContainer}>
+          <Info size={18} color="#1E40AF" />
+          <AppText style={styles.guideText}>
+            Share the family code below with your relatives so they can join
+            this group.
+          </AppText>
         </View>
 
-        <View style={{ width: 80 }} />
-      </View>
+        {/* Display the Code for the Admin */}
+        <View style={styles.codeDisplayBox}>
+          <Hash size={16} color="#64748B" />
+          <AppText style={styles.codeLabel}>FAMILY CODE: </AppText>
+          <AppText type="bold" style={styles.codeValue}>
+            {familyCode || familyId}
+          </AppText>
+        </View>
 
-      <View style={styles.guideContainer}>
-        <Info size={18} color="#64748B" />
-        <AppText style={styles.guideText}>
-          Enter email or phone number. If they're already on the app, we'll
-          still send the invite link to their email.
-        </AppText>
-      </View>
+        <View style={styles.section}>
+          <AppText type="bold" style={styles.sectionLabel}>
+            Invite via Social Apps
+          </AppText>
 
-      <View style={styles.searchWrapper}>
+          <View style={styles.shareActionsRow}>
+            <TouchableOpacity
+              style={[styles.actionCard, { backgroundColor: "#111827" }]}
+              onPress={handleShareInvite}
+            >
+              <Share2 size={24} color="#FFF" />
+              <AppText style={styles.actionCardText}>Share Code & Link</AppText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionCard, { backgroundColor: "#EAB308" }]}
+              onPress={copyToClipboard}
+            >
+              <Copy size={24} color="#FFF" />
+              <AppText style={styles.actionCardText}>Copy Instructions</AppText>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.divider}>
+          <View style={styles.line} />
+          <AppText style={styles.dividerText}>OR INVITE BY EMAIL</AppText>
+          <View style={styles.line} />
+        </View>
+
         <View style={styles.searchBar}>
           <Search size={18} color="#94A3B8" />
           <TextInput
-            placeholder={placeholderText}
+            placeholder="Enter email address..."
             style={styles.input}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
-            keyboardType={
-              searchQuery.includes("@") ? "email-address" : "phone-pad"
-            }
-            autoCorrect={false}
-            autoFocus
+            keyboardType="email-address"
           />
         </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.listContainer}>
-        {usersLoading ? (
-          <ActivityIndicator
-            size="large"
-            color="#EAB308"
-            style={{ marginTop: 80 }}
-          />
-        ) : isValidInput(searchQuery) ? (
+        {searchQuery.includes("@") && (
           <TouchableOpacity
             style={styles.inviteCard}
             onPress={handleInvite}
@@ -193,37 +177,15 @@ const InviteMembersPage = () => {
                 <MailPlus size={28} color="#EAB308" />
                 <View style={{ flex: 1, marginLeft: 16 }}>
                   <AppText type="bold" style={styles.inviteTitle}>
-                    Invite{" "}
-                    {foundUser
-                      ? `"${foundUser.firstName || "User"}"`
-                      : `"${searchQuery.trim()}"`}
+                    Invite "{searchQuery.trim()}"
                   </AppText>
-
                   <AppText style={styles.inviteSubtitle}>
-                    Send invitation link to{" "}
-                    {foundUser ? foundUser.email : "this email"}
+                    Send via email
                   </AppText>
-
-                  {foundUser && (
-                    <View style={styles.alreadyOnAppRow}>
-                      <UserCheck size={16} color="#16A34A" />
-                      <AppText style={styles.alreadyOnAppText}>
-                        This user is already on the app
-                      </AppText>
-                    </View>
-                  )}
                 </View>
               </>
             )}
           </TouchableOpacity>
-        ) : searchQuery.trim() ? (
-          <AppText style={styles.hintText}>
-            Enter a valid email or phone number (min 8 digits) to continue
-          </AppText>
-        ) : (
-          <AppText style={styles.hintText}>
-            Type email or phone number above to invite someone
-          </AppText>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -232,7 +194,6 @@ const InviteMembersPage = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAFAFA" },
-
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -252,92 +213,88 @@ const styles = StyleSheet.create({
   headerTitleContainer: { alignItems: "center" },
   headerTitle: { fontSize: 18, color: "#111827" },
   headerSubtitle: { fontSize: 12, color: "#64748B", marginTop: 2 },
-
+  scrollBody: { padding: 16 },
   guideContainer: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#F0F9FF",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
     padding: 14,
-    marginHorizontal: 16,
-    marginTop: 12,
     borderRadius: 12,
+    marginBottom: 15,
+  },
+  guideText: { flex: 1, fontSize: 13, color: "#1E40AF", marginLeft: 10 },
+  codeDisplayBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 25,
+    alignSelf: "center",
     borderWidth: 1,
-    borderColor: "#BAE6FD",
+    borderColor: "#E2E8F0",
   },
-  guideText: {
-    flex: 1,
+  codeLabel: { fontSize: 12, color: "#64748B", marginLeft: 6 },
+  codeValue: { fontSize: 16, color: "#111827", letterSpacing: 1 },
+  section: { marginBottom: 24 },
+  sectionLabel: {
     fontSize: 13,
-    color: "#1E40AF",
-    lineHeight: 18,
-    marginLeft: 10,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 15,
+    textTransform: "uppercase",
   },
-
-  searchWrapper: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#FFF",
+  shareActionsRow: { flexDirection: "row", gap: 12 },
+  actionCard: {
+    flex: 1,
+    padding: 20,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+  actionCardText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  divider: { flexDirection: "row", alignItems: "center", marginVertical: 30 },
+  line: { flex: 1, height: 1, backgroundColor: "#E2E8F0" },
+  dividerText: {
+    marginHorizontal: 15,
+    fontSize: 11,
+    fontWeight: "bold",
+    color: "#94A3B8",
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FFF",
     paddingHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    height: 54,
   },
-  input: {
-    flex: 1,
-    height: 52,
-    marginLeft: 12,
-    fontSize: 16,
-    color: "#1E293B",
-  },
-
-  listContainer: {
-    padding: 20,
-    alignItems: "center",
-    paddingBottom: 100,
-  },
-
+  input: { flex: 1, marginLeft: 12, fontSize: 16, color: "#1E293B" },
   inviteCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFF",
     padding: 20,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: "#EAB308",
     borderStyle: "dashed",
-    width: "100%",
-    marginTop: 20,
+    marginTop: 15,
   },
-  inviteTitle: { fontSize: 16, color: "#111827" },
-  inviteSubtitle: { fontSize: 13, color: "#64748B", marginTop: 4 },
-
-  alreadyOnAppRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  alreadyOnAppText: {
-    fontSize: 13,
-    color: "#16A34A",
-    marginLeft: 6,
-    fontWeight: "500",
-  },
-
-  hintText: {
-    textAlign: "center",
-    color: "#94A3B8",
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 60,
-    paddingHorizontal: 30,
-  },
+  inviteTitle: { fontSize: 15, color: "#111827" },
+  inviteSubtitle: { fontSize: 13, color: "#64748B", marginTop: 2 },
 });
 
 export default InviteMembersPage;

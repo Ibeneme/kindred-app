@@ -339,7 +339,7 @@ const FamilyMembersPage = () => {
                 </View>
               )}
 
-              <View style={styles.section}>
+              {/* <View style={styles.section}>
                 <AppText style={styles.sectionLabel}>
                   {canEditThis ? "Manage Permissions" : "Permissions"}
                 </AppText>
@@ -381,7 +381,7 @@ const FamilyMembersPage = () => {
                     </AppText>
                   )}
                 </View>
-              </View>
+              </View> */}
 
               {!isMe && (
                 <View style={styles.actionRow}>

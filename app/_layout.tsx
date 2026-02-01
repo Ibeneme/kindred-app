@@ -45,7 +45,6 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
-  // Simple theme object (or pull this from your actual theme context)
   const theme = {
     background: isDark ? "#0F172A" : "#F8FAFC",
   };

@@ -111,7 +111,8 @@ const FamilyDetailPage = () => {
         getFamilyById(id as string)
       ).unwrap();
       setFamilyData(response);
-      console.warn(response.family.member, "responseresponse");
+      console.warn(JSON.stringify(response, null, 2));
+
 
       // Only fetch join requests if user is the owner
       if (response.isOwner) {
@@ -192,9 +193,11 @@ const FamilyDetailPage = () => {
     //const params = { familyId: fId, isOwner: String(isOwner) };
     const params = { 
       familyId: fId, 
+      familyName: family.familyName, 
+      familyCode: family.inviteCode, // Added explicitly for the Invite Page
       isOwner: String(isOwner),
       currentMembers: JSON.stringify(family.members || []) 
-  };
+    };
 
     const summary = family.unreadSummary || {};
     const contentStatus = family.contentStatus || [];
@@ -206,7 +209,7 @@ const FamilyDetailPage = () => {
 
     const navigateToContent = (contentType: string) => {
       router.push({
-        pathname: "/family/content-management",
+        pathname: "/family/contents/content-management",
         params: { ...params, contentType },
       });
     };
@@ -230,7 +233,7 @@ const FamilyDetailPage = () => {
         label: "News",
         icon: <FileText size={20} color="#3B82F6" />,
         badge: summary.news || 0,
-        onPress: () => router.push({ pathname: "/family/news", params }),
+        onPress: () => router.push({ pathname: "/family/news/news", params }),
       },
       tasks: {
         label: "Tasks",
@@ -240,7 +243,7 @@ const FamilyDetailPage = () => {
           if (isPersonalFamily) {
             navigateToContent("Task");
           } else {
-            router.push({ pathname: "/family/tasks", params });
+            router.push({ pathname: "/family/tasks/tasks", params });
           }
         },
       },
@@ -284,7 +287,7 @@ const FamilyDetailPage = () => {
         label: "Polls",
         icon: <BarChart3 size={20} color="#6366F1" />,
         badge: summary.polls || 0,
-        onPress: () => router.push({ pathname: "/family/polls", params }),
+        onPress: () => router.push({ pathname: "/family/polls/polls", params }),
       },
       tree: {
         label: "Family Tree",

@@ -33,6 +33,7 @@ import {
   PauseCircle,
   PlayCircle,
   UserPlus,
+  ChevronDown,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useDispatch, useSelector } from "react-redux";
@@ -45,7 +46,6 @@ import {
   addReportComment,
 } from "@/src/redux/slices/reportSlice";
 
-// Status Options Mapping
 const STATUS_OPTIONS = [
   { label: "In Progress", icon: PlayCircle, color: "#F59E0B" },
   { label: "Completed", icon: CheckCircle2, color: "#10B981" },
@@ -83,6 +83,7 @@ const ReportsPage = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [memberDropdownVisible, setMemberDropdownVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -90,14 +91,13 @@ const ReportsPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
-  // Target States
+  // Form & Comment State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [activeReport, setActiveReport] = useState<any>(null);
   const [commentText, setCommentText] = useState("");
   const [isSendingComment, setIsSendingComment] = useState(false);
 
-  // Form State
   const [form, setForm] = useState({
     reportName: "",
     workDone: "",
@@ -107,18 +107,18 @@ const ReportsPage = () => {
   });
 
   useEffect(() => {
-    if (familyId) {
-      dispatch(fetchReportsByFamily(familyId));
-    }
+    if (familyId) dispatch(fetchReportsByFamily(familyId));
   }, [familyId, dispatch]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    dispatch(fetchReportsByFamily(familyId)).finally(() =>
-      setRefreshing(false)
-    );
+    dispatch(fetchReportsByFamily(familyId)).finally(() => {
+      setRefreshing(false);
+      setCommentText("");
+    });
   }, [familyId, dispatch]);
 
+  // Sync active report if reports list updates (for live comment updates)
   useEffect(() => {
     if (activeReport) {
       const updated = reports.find((r) => r._id === activeReport._id);
@@ -130,9 +130,9 @@ const ReportsPage = () => {
     const isSender = report.sender?._id === currentUserId;
     const isSharedWithMe =
       report.sharedWith?.some((p: any) => p._id === currentUserId) ?? false;
-    const matchesSearch =
-      report.reportName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.workDone.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = report.reportName
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
     const isCorrectTab =
       tab === "sent" ? isSender : isSharedWithMe && !isSender;
     return isCorrectTab && matchesSearch;
@@ -186,6 +186,21 @@ const ReportsPage = () => {
     }
   };
 
+  const handlePostComment = async () => {
+    if (!commentText.trim() || !activeReport) return;
+    setIsSendingComment(true);
+    try {
+      await dispatch(
+        addReportComment({ reportId: activeReport._id, message: commentText })
+      ).unwrap();
+      dispatch(fetchReportsByFamily(familyId));
+    } catch (err) {
+      Alert.alert("Error", "Failed to add comment.");
+    } finally {
+      setIsSendingComment(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!reportToDelete) return;
     try {
@@ -195,21 +210,6 @@ const ReportsPage = () => {
       onRefresh();
     } catch (err) {
       Alert.alert("Error", "Could not delete.");
-    }
-  };
-
-  const handlePostComment = async () => {
-    if (!commentText.trim() || !activeReport) return;
-    setIsSendingComment(true);
-    try {
-      await dispatch(
-        addReportComment({ reportId: activeReport._id, message: commentText })
-      ).unwrap();
-      setCommentText("");
-    } catch (err) {
-      Alert.alert("Error", "Failed to add comment.");
-    } finally {
-      setIsSendingComment(false);
     }
   };
 
@@ -264,7 +264,6 @@ const ReportsPage = () => {
               autoFocus
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
             />
             <TouchableOpacity
               onPress={() => {
@@ -393,12 +392,6 @@ const ReportsPage = () => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyBox}>
-            <FileText size={64} color="#F3F4F6" />
-            <AppText style={styles.emptyLabel}>No reports found.</AppText>
-          </View>
-        }
       />
 
       <TouchableOpacity
@@ -442,9 +435,8 @@ const ReportsPage = () => {
                 style={styles.textInput}
                 value={form.reportName}
                 onChangeText={(t) => setForm({ ...form, reportName: t })}
-                placeholder="Enter report title..."
+                placeholder="Enter title..."
               />
-
               <AppText style={styles.inputLabel}>Work Details *</AppText>
               <TextInput
                 style={[styles.textInput, styles.longInput]}
@@ -453,9 +445,7 @@ const ReportsPage = () => {
                 multiline
                 placeholder="What did you achieve?"
               />
-
-              {/* STATUS GRID MAPPING */}
-              <AppText style={styles.inputLabel}>Select Status</AppText>
+              <AppText style={styles.inputLabel}>Status</AppText>
               <View style={styles.statusGrid}>
                 {STATUS_OPTIONS.map((opt) => (
                   <TouchableOpacity
@@ -470,7 +460,7 @@ const ReportsPage = () => {
                     ]}
                   >
                     <opt.icon
-                      size={20}
+                      size={18}
                       color={form.status === opt.label ? opt.color : "#9CA3AF"}
                     />
                     <AppText
@@ -487,9 +477,8 @@ const ReportsPage = () => {
                   </TouchableOpacity>
                 ))}
               </View>
-
               <AppText style={styles.inputLabel}>
-                Completion Percentage ({form.completionPercentage}%)
+                Completion ({form.completionPercentage}%)
               </AppText>
               <TextInput
                 style={styles.textInput}
@@ -498,16 +487,24 @@ const ReportsPage = () => {
                 onChangeText={(t) =>
                   setForm({ ...form, completionPercentage: t })
                 }
-                placeholder="0"
               />
-
-              {/* SHARED WITH MAPPING */}
-              <View style={styles.sharedSection}>
-                <View style={styles.sharedHeader}>
-                  <UserPlus size={18} color="#4B5563" />
-                  <AppText style={styles.inputLabel}> Shared With</AppText>
+              <AppText style={styles.inputLabel}>Shared With</AppText>
+              <TouchableOpacity
+                style={styles.dropdownTrigger}
+                onPress={() => setMemberDropdownVisible(!memberDropdownVisible)}
+              >
+                <View style={styles.rowCenter}>
+                  <UserPlus size={18} color="#6B7280" />
+                  <AppText style={styles.dropdownPlaceholder}>
+                    {form.sharedWith.length > 0
+                      ? `${form.sharedWith.length} Members Selected`
+                      : "Select team members"}
+                  </AppText>
                 </View>
-                <View style={styles.memberSelectionBox}>
+                <ChevronDown size={20} color="#6B7280" />
+              </TouchableOpacity>
+              {memberDropdownVisible && (
+                <View style={styles.dropdownContent}>
                   {members
                     .filter((m: any) => m._id !== currentUserId)
                     .map((m: any) => {
@@ -515,49 +512,68 @@ const ReportsPage = () => {
                       return (
                         <TouchableOpacity
                           key={m._id}
+                          style={styles.dropdownItem}
                           onPress={() => toggleMemberSelection(m._id)}
-                          style={[
-                            styles.memberChip,
-                            isSelected && styles.memberChipSelected,
-                          ]}
                         >
-                          <AppText
-                            style={[
-                              styles.memberChipText,
-                              isSelected && styles.memberChipTextSelected,
-                            ]}
-                          >
+                          <AppText style={styles.memberItemText}>
                             {m.firstName} {m.lastName}
                           </AppText>
-                          {isSelected && (
-                            <CheckCircle2 size={14} color="#FFF" />
-                          )}
+                          <View
+                            style={[
+                              styles.checkbox,
+                              isSelected && styles.checkboxSelected,
+                            ]}
+                          >
+                            {isSelected && (
+                              <CheckCircle2 size={16} color="#FFF" />
+                            )}
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
                 </View>
+              )}
+              <View style={styles.chipContainer}>
+                {members
+                  .filter((m: any) => form.sharedWith.includes(m._id))
+                  .map((m: any) => (
+                    <View key={m._id} style={styles.selectedChip}>
+                      <AppText style={styles.chipText}>{m.firstName}</AppText>
+                      <TouchableOpacity
+                        onPress={() => toggleMemberSelection(m._id)}
+                      >
+                        <X size={14} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
               </View>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* COMMENTS MODAL */}
+      {/* FEEDBACK (COMMENTS) MODAL */}
       <Modal visible={commentModalVisible} transparent animationType="slide">
         <View style={styles.fullOverlay}>
-          <View style={[styles.bottomSheet, { height: "75%" }]}>
+          <View style={[styles.bottomSheet, { height: "80%" }]}>
             <View style={styles.sheetHeader}>
-              <AppText type="bold">Feedback</AppText>
+              <AppText type="bold" style={styles.sheetTitle}>
+                Feedback
+              </AppText>
               <TouchableOpacity onPress={() => setCommentModalVisible(false)}>
                 <X size={24} color="#111827" />
               </TouchableOpacity>
             </View>
             <FlatList
               data={activeReport?.comments || []}
-              keyExtractor={(_, i) => i.toString()}
+              keyExtractor={(item) => item._id}
               contentContainerStyle={{ padding: 20 }}
               renderItem={({ item }) => {
-                const isMine = item.userId === currentUserId;
+                const isMine = item.user?._id === currentUserId;
+                const authorName = item.user
+                  ? `${item.user.firstName} ${item.user.lastName}`
+                  : "Unknown User";
+
                 return (
                   <View
                     style={[
@@ -567,39 +583,54 @@ const ReportsPage = () => {
                   >
                     <View style={styles.commentHeader}>
                       <AppText style={styles.commentAuthor}>
-                        {isMine ? "You" : item.userName}
+                        {isMine ? "You" : authorName}
                       </AppText>
-                      <View style={styles.commentStatusRow}>
-                        <AppText style={styles.commentDate}>
-                          11th Jan 2026
-                        </AppText>
-                        <View style={{ marginLeft: 4 }}>
-                          {isSendingComment && !item._id ? (
-                            <Clock size={12} color="#9CA3AF" />
-                          ) : (
-                            <CheckCheck size={14} color="#10B981" />
-                          )}
-                        </View>
-                      </View>
+                      <AppText style={styles.commentDate}>
+                        {new Date(item.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </AppText>
                     </View>
-                    <AppText style={styles.commentMessage}>
-                      {item.message}
-                    </AppText>
+                    <View
+                      style={[
+                        styles.commentMessageContainer,
+                        isMine && styles.commentMessageMine,
+                      ]}
+                    >
+                      <AppText
+                        style={[
+                          styles.commentMessage,
+                          isMine && styles.commentMessageTextMine,
+                        ]}
+                      >
+                        {item.message}
+                      </AppText>
+                    </View>
                   </View>
                 );
               }}
+              ListEmptyComponent={
+                <View style={styles.emptyComments}>
+                  <MessageSquare size={48} color="#F3F4F6" />
+                  <AppText style={{ color: "#9CA3AF", marginTop: 10 }}>
+                    No feedback yet.
+                  </AppText>
+                </View>
+              }
             />
             <View style={styles.commentComposer}>
               <TextInput
                 style={styles.composerInput}
-                placeholder="Add feedback..."
+                placeholder="Type your feedback..."
                 value={commentText}
                 onChangeText={setCommentText}
+                multiline
               />
               <TouchableOpacity
                 style={styles.composerSend}
                 onPress={handlePostComment}
-                disabled={isSendingComment}
+                disabled={isSendingComment || !commentText.trim()}
               >
                 {isSendingComment ? (
                   <ActivityIndicator size="small" color="#FFF" />
@@ -612,7 +643,7 @@ const ReportsPage = () => {
         </View>
       </Modal>
 
-      {/* DELETE MODAL */}
+      {/* DELETE CONFIRMATION */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.centeredDim}>
           <View style={styles.confirmBox}>
@@ -635,9 +666,7 @@ const ReportsPage = () => {
                 style={styles.deleteAction}
                 onPress={confirmDelete}
               >
-                <AppText style={{ color: "#FFF", fontWeight: "bold" }}>
-                  Delete
-                </AppText>
+                <AppText style={{ color: "#FFF" }}>Delete</AppText>
               </TouchableOpacity>
             </View>
           </View>
@@ -667,7 +696,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     borderRadius: 8,
     paddingHorizontal: 10,
-    marginHorizontal: 10,
     height: 40,
   },
   searchInput: { flex: 1, fontSize: 15, color: "#111827" },
@@ -695,7 +723,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F3F4F6",
     overflow: "hidden",
-    elevation: 1,
   },
   cardAccent: { height: 4 },
   cardBody: { padding: 16 },
@@ -709,12 +736,7 @@ const styles = StyleSheet.create({
   dateLabel: { fontSize: 12, color: "#9CA3AF" },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusPillText: { fontSize: 11, fontWeight: "800" },
-  reportPreview: {
-    fontSize: 14,
-    color: "#4B5563",
-    marginBottom: 15,
-    lineHeight: 20,
-  },
+  reportPreview: { fontSize: 14, color: "#4B5563", marginBottom: 15 },
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -729,7 +751,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressIndicator: { height: "100%" },
-  progressValue: { fontSize: 12, fontWeight: "bold", color: "#111827" },
+  progressValue: { fontSize: 12, fontWeight: "bold" },
   cardActions: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -757,12 +779,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
-  },
-  centeredDim: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
   },
   bottomSheet: {
     backgroundColor: "#FFF",
@@ -808,29 +824,70 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1.5,
     borderColor: "#F3F4F6",
-    backgroundColor: "#FDFDFD",
   },
   statusItemText: { fontSize: 13, color: "#6B7280" },
-  sharedSection: { marginTop: 10, marginBottom: 20 },
-  sharedHeader: {
+  dropdownTrigger: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 5,
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 10,
   },
-  memberSelectionBox: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  memberChip: {
+  rowCenter: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dropdownPlaceholder: { color: "#6B7280", fontSize: 14 },
+  dropdownContent: {
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  memberItemText: { fontSize: 14, color: "#111827" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkboxSelected: { backgroundColor: "#111827", borderColor: "#111827" },
+  chipContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 20,
+  },
+  selectedChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
+    backgroundColor: "#111827",
+    paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
   },
-  memberChipSelected: { backgroundColor: "#111827" },
-  memberChipText: { fontSize: 13, color: "#4B5563" },
-  memberChipTextSelected: { color: "#FFF", fontWeight: "bold" },
+  chipText: { color: "#FFF", fontSize: 12, fontWeight: "bold" },
+  centeredDim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   confirmBox: {
     width: "85%",
     backgroundColor: "#FFF",
@@ -855,53 +912,61 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  commentBubble: { marginBottom: 16, maxWidth: "85%", alignSelf: "flex-start" },
-  commentBubbleSent: { alignSelf: "flex-end", alignItems: "flex-end" },
+  commentBubble: { marginBottom: 20, maxWidth: "85%", alignSelf: "flex-start" },
+  commentBubbleSent: { alignSelf: "flex-end" },
   commentHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 4,
-    width: "100%",
+    paddingHorizontal: 4,
   },
   commentAuthor: { fontSize: 11, color: "#9CA3AF", fontWeight: "bold" },
-  commentStatusRow: { flexDirection: "row", alignItems: "center" },
-  commentDate: { fontSize: 10, color: "#9CA3AF" },
-  commentMessage: {
+  commentDate: { fontSize: 10, color: "#9CA3AF", marginLeft: 8 },
+  commentMessageContainer: {
     backgroundColor: "#F3F4F6",
-    padding: 14,
+    padding: 12,
     borderRadius: 16,
-    color: "#111827",
+    borderTopLeftRadius: 4,
   },
+  commentMessageMine: {
+    backgroundColor: "#111827",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 4,
+  },
+  commentMessage: { fontSize: 14, color: "#111827", lineHeight: 20 },
+  commentMessageTextMine: { color: "#FFF" },
   commentComposer: {
     flexDirection: "row",
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
-    gap: 12,
+    backgroundColor: "#FFF",
+    alignItems: "center",
   },
   composerInput: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    height: 48,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    maxHeight: 100,
+    marginRight: 10,
+    fontSize: 15,
   },
   composerSend: {
     backgroundColor: "#111827",
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
   },
-  noCommentsText: { textAlign: "center", marginTop: 40, color: "#9CA3AF" },
-  emptyBox: {
+  emptyComments: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 100,
+    paddingVertical: 50,
   },
-  emptyLabel: { marginTop: 15, color: "#9CA3AF" },
 });
 
 export default ReportsPage;

@@ -24,6 +24,7 @@ import {
   Calendar,
   MapPin,
   Clock,
+  Lock,
 } from "lucide-react-native";
 import DropDownPicker from "react-native-dropdown-picker";
 import DateTimePicker, {
@@ -37,6 +38,8 @@ import {
   createFamilyContent,
   updateFamilyContent,
 } from "@/src/redux/slices/familyContentSlice";
+
+const BRAND_COLOR = "#EAB308"; // Primary brand color
 
 const KeyDatesPage = () => {
   const { familyId, isOwner } = useLocalSearchParams<{
@@ -155,7 +158,7 @@ const KeyDatesPage = () => {
       metadata: {
         eventDate: eventDate.toISOString(),
         place,
-        visibility,
+        visibility: visibility, // Using the updated visibility state
       },
     };
 
@@ -170,6 +173,8 @@ const KeyDatesPage = () => {
       setModalVisible(false);
       resetForm();
     } catch (e: any) {
+      // If saving fails for 'public', check console for specific API error
+      console.error("Save Error:", e);
       Alert.alert("Error", e.message || "Could not save event");
     } finally {
       setIsSaving(false);
@@ -179,6 +184,7 @@ const KeyDatesPage = () => {
   const renderEventCard = ({ item }: { item: any }) => {
     const date = new Date(item.metadata?.eventDate);
     const isPast = date < new Date();
+    const vis = item.metadata?.visibility;
 
     return (
       <View style={[styles.eventCard, isPast && styles.eventCardPast]}>
@@ -192,9 +198,12 @@ const KeyDatesPage = () => {
         </View>
 
         <View style={styles.eventInfo}>
-          <AppText type="semibold" style={styles.eventTitle}>
-            {item.title}
-          </AppText>
+          <View style={styles.titleRow}>
+            <AppText type="semibold" style={styles.eventTitle}>
+              {item.title}
+            </AppText>
+            {vis === "personal" && <Lock size={14} color={BRAND_COLOR} />}
+          </View>
 
           <View style={styles.metaRow}>
             <Clock size={16} color="#6B7280" />
@@ -230,7 +239,7 @@ const KeyDatesPage = () => {
               setModalVisible(true);
             }}
           >
-            <Edit3 size={20} color="#EAB308" />
+            <Edit3 size={20} color={BRAND_COLOR} />
           </TouchableOpacity>
         )}
       </View>
@@ -287,7 +296,7 @@ const KeyDatesPage = () => {
 
       {status === "loading" ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#EAB308" />
+          <ActivityIndicator size="large" color={BRAND_COLOR} />
         </View>
       ) : filteredData.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -403,7 +412,8 @@ const KeyDatesPage = () => {
                   value={visibility}
                   items={[
                     { label: "Public (all family)", value: "public" },
-                    { label: "Private (only admins)", value: "private" },
+                    { label: "Private (admins only)", value: "private" },
+                    { label: "Only for me (private)", value: "personal" },
                   ]}
                   setOpen={setOpenDropdown}
                   setValue={setVisibility}
@@ -455,8 +465,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#111827",
   },
-
-  // Filter
   filterContainer: {
     flexDirection: "row",
     marginHorizontal: 16,
@@ -486,8 +494,6 @@ const styles = StyleSheet.create({
     color: "#1E293B",
     fontWeight: "600",
   },
-
-  // List
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 100,
@@ -510,7 +516,7 @@ const styles = StyleSheet.create({
   dateBox: {
     width: 64,
     height: 64,
-    backgroundColor: "#EAB308",
+    backgroundColor: BRAND_COLOR,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -530,10 +536,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
   eventTitle: {
     fontSize: 17,
     color: "#111827",
-    marginBottom: 6,
   },
   metaRow: {
     flexDirection: "row",
@@ -551,8 +562,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-
-  // FAB
   fab: {
     position: "absolute",
     right: 24,
@@ -560,17 +569,15 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#EAB308",
+    backgroundColor: BRAND_COLOR,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#EAB308",
+    shadowColor: BRAND_COLOR,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 6,
   },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -650,21 +657,19 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: 32,
-    backgroundColor: "#111827",
+    backgroundColor: BRAND_COLOR, // Changed from black to Brand Color
     borderRadius: 14,
     paddingVertical: 18,
     alignItems: "center",
   },
   saveBtnDisabled: {
-    backgroundColor: "#6B7280",
+    backgroundColor: "#CBD5E1",
   },
   saveBtnText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },
-
-  // Empty & Loading
   loadingContainer: {
     flex: 1,
     justifyContent: "center",

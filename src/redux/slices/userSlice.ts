@@ -27,6 +27,7 @@ export interface User {
     expoPushToken: string | null;
     notificationPreferences: NotificationPrefs;
     privacySettings: PrivacySettings;
+    id?: any
 }
 
 interface UserState {
@@ -55,7 +56,7 @@ export const updateProfilePicture = createAsyncThunk(
     async (imageAsset: any, { rejectWithValue }) => {
         try {
             const formData = new FormData();
-            
+
             // Append the image in the format React Native / Multer expects
             formData.append("image", {
                 uri: imageAsset.uri,
@@ -237,7 +238,7 @@ const userSlice = createSlice({
                 (action) => action.type.startsWith("user/") && action.type.endsWith("/rejected"),
                 (state, action) => {
                     state.loading = false;
-                   // state.error = action.payload as string;
+                    // state.error = action.payload as string;
                     state.updateSuccess = false;
                 }
             );

@@ -58,6 +58,8 @@ const motivationalQuotes = [
 const HomePage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
+
+  // Selectors for Redux state
   const { families, loading: familyLoading } = useSelector(
     (state: RootState) => state.family
   );
@@ -136,7 +138,7 @@ const HomePage = () => {
               Good day,
             </AppText>
             <AppText type="bold" style={styles.userName}>
-              {user?.firstName || "***************"}
+              {user?.firstName || "Welcome"}
             </AppText>
           </View>
 
@@ -184,11 +186,6 @@ const HomePage = () => {
           <AppText type="bold" style={styles.sectionTitle}>
             Join with Invite Code
           </AppText>
-          <View className="flex flex-col items-center gap-4">
-            <View className="relative">
-              <View className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 bg-green-500" />
-            </View>
-          </View>
           <View style={styles.inviteSearchContainer}>
             <Hash size={18} color={COLORS.icon} />
             <TextInput
@@ -226,7 +223,7 @@ const HomePage = () => {
 
           <View style={styles.divider} />
 
-          {/* Your Families List */}
+          {/* Families List Header */}
           <View style={styles.listHeader}>
             <AppText type="bold" style={styles.sectionTitle}>
               Your Families
@@ -243,10 +240,11 @@ const HomePage = () => {
             </View>
           </View>
 
+          {/* Family Cards Mapping */}
           {filteredFamilies.map((item, index) => {
             const accentColor = cardAccents[index % cardAccents.length];
 
-            // LOGIC: Sum all unread items from unreadSummary
+            // Calculate total unread count from the unreadSummary object in your JSON
             const summary = item.unreadSummary || {};
             const totalUnread = Object.values(summary).reduce(
               (acc: number, val: any) => acc + (Number(val) || 0),
@@ -274,7 +272,7 @@ const HomePage = () => {
                       </AppText>
                     </View>
 
-                    {/* RENDER RED BADGE IF totalUnread > 0 */}
+                    {/* Notification Badge for specific family */}
                     {totalUnread > 0 && (
                       <View style={styles.familyUnreadBadge}>
                         <AppText style={styles.familyUnreadText} type="bold">
@@ -290,6 +288,9 @@ const HomePage = () => {
                     <Users size={14} color={COLORS.textLight} />
                     <AppText style={styles.memberCount}>
                       {item.members?.length || 0} members
+                    </AppText>
+                    <AppText style={styles.familyTypeTag}>
+                      • {item.familyType}
                     </AppText>
                   </View>
                 </View>
@@ -432,12 +433,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 10,
     paddingHorizontal: 6,
-    // Add shadow for better "pop"
-    shadowColor: COLORS.unreadRed,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
   },
   familyUnreadText: { color: "#FFF", fontSize: 10, textAlign: "center" },
   inviteLabel: {
@@ -453,6 +448,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   memberCount: { fontSize: 13, color: COLORS.textLight },
+  familyTypeTag: { fontSize: 12, color: COLORS.textLight },
 });
 
 export default HomePage;

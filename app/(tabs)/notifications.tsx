@@ -186,7 +186,7 @@ const NotificationsPage = () => {
 
     if (type === "NEWS_UPDATE") {
       return router.push({
-        pathname: "/family/news",
+        pathname: "/family/news/news",
         params: { id: familyId },
       });
     }
