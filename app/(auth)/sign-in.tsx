@@ -306,6 +306,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="Email address"
                       keyboardType="email-address"
@@ -323,6 +324,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="Password"
                       secureTextEntry={!showPassword}
@@ -394,6 +396,7 @@ const AuthPage = () => {
                         style={styles.inputIcon}
                       />
                       <TextInput
+                        placeholderTextColor={"#666"}
                         style={styles.input}
                         placeholder="First"
                         value={firstName}
@@ -408,6 +411,7 @@ const AuthPage = () => {
                     </AppText>
                     <View style={styles.inputWrapper}>
                       <TextInput
+                        placeholderTextColor={"#666"}
                         style={styles.inputNoIcon}
                         placeholder="Last"
                         value={lastName}
@@ -425,6 +429,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Phone size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="080..."
                       keyboardType="phone-pad"
@@ -469,6 +474,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="Email"
                       keyboardType="email-address"
@@ -486,6 +492,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="Min 6 characters"
                       secureTextEntry={!showPassword}
@@ -540,6 +547,7 @@ const AuthPage = () => {
                     value={otp}
                     onChangeText={setOtp}
                     maxLength={6}
+                    placeholderTextColor={"#666"}
                   />
                 </View>
 
@@ -589,6 +597,7 @@ const AuthPage = () => {
                 <View style={styles.inputWrapper}>
                   <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
                   <TextInput
+                    placeholderTextColor={"#666"}
                     style={styles.input}
                     placeholder="Email"
                     keyboardType="email-address"
@@ -625,6 +634,7 @@ const AuthPage = () => {
                   <View style={styles.inputWrapper}>
                     <Hash size={20} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput
+                      placeholderTextColor={"#666"}
                       style={styles.input}
                       placeholder="Code from email"
                       keyboardType="number-pad"
@@ -645,6 +655,7 @@ const AuthPage = () => {
                       secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
+                      placeholderTextColor={"#666"}
                     />
                     <TouchableOpacity
                       onPress={() => setShowPassword(!showPassword)}

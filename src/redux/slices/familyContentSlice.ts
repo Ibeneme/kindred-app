@@ -75,21 +75,39 @@ export const createFamilyContent = createAsyncThunk(
     async (payload: any, { rejectWithValue }) => {
         try {
             const formData = new FormData();
-            Object.keys(payload).forEach(key => {
-                if (key === 'images' && payload.images) {
-                    payload.images.forEach((img: any) => formData.append("images", img));
-                } else if (key === 'metadata') {
+
+            Object.keys(payload).forEach((key) => {
+                if (key === "images" && payload.images) {
+                    payload.images.forEach((img: any, idx: number) => {
+                        if (!img.isRemote) {
+                            // only send new images
+                            const uriParts = img.uri.split("/");
+                            const fileName = uriParts[uriParts.length - 1];
+                            const fileType = fileName.split(".").pop();
+
+                            formData.append("images", {
+                                uri: img.uri,
+                                name: fileName,
+                                type: `image/${fileType || "jpg"}`,
+                            } as any);
+                        }
+                    });
+                } else if (key === "metadata") {
                     formData.append("metadata", JSON.stringify(payload.metadata));
                 } else if (payload[key] !== undefined) {
                     formData.append(key, payload[key]);
                 }
             });
+
             const res = await axiosInstance.post("/family-content", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
+
             return res.data.content;
         } catch (error: any) {
-            return rejectWithValue(error.response?.data?.message || "Failed to create content");
+            return rejectWithValue(
+                error.response?.data?.message || "Failed to create content"
+            );
         }
     }
 );

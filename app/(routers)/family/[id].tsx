@@ -113,7 +113,6 @@ const FamilyDetailPage = () => {
       setFamilyData(response);
       console.warn(JSON.stringify(response, null, 2));
 
-
       // Only fetch join requests if user is the owner
       if (response.isOwner) {
         const requests = await dispatch(getJoinRequests(id as string)).unwrap();
@@ -191,12 +190,12 @@ const FamilyDetailPage = () => {
     const fId = family._id;
     const type = family.familyType;
     //const params = { familyId: fId, isOwner: String(isOwner) };
-    const params = { 
-      familyId: fId, 
-      familyName: family.familyName, 
+    const params = {
+      familyId: fId,
+      familyName: family.familyName,
       familyCode: family.inviteCode, // Added explicitly for the Invite Page
       isOwner: String(isOwner),
-      currentMembers: JSON.stringify(family.members || []) 
+      currentMembers: JSON.stringify(family.members || []),
     };
 
     const summary = family.unreadSummary || {};
@@ -240,11 +239,13 @@ const FamilyDetailPage = () => {
         icon: <ClipboardList size={20} color="#10B981" />,
         badge: summary.tasks || getBadge("Task") || 0,
         onPress: () => {
-          if (isPersonalFamily) {
-            navigateToContent("Task");
-          } else {
-            router.push({ pathname: "/family/tasks/tasks", params });
-          }
+          router.push({ pathname: "/family/tasks/tasks", params });
+
+          // if (isPersonalFamily) {
+          //   navigateToContent("Task");
+          // } else {
+          //   router.push({ pathname: "/family/tasks/tasks", params });
+          // }
         },
       },
       keydates: {
@@ -313,6 +314,14 @@ const FamilyDetailPage = () => {
         badge: getBadge("Village Tradition"),
         onPress: () => navigateToContent("Village Tradition"),
       },
+
+      safety: {
+        label: "Safety Net",
+        icon: <ShieldCheck size={20} color="#DC2626" />,
+        badge: getBadge("Safety Net"),
+        onPress: () => router.push({ pathname: "/(routers)/family/SafetyNetPage", params }),
+     
+      },
       language: {
         label: "Language",
         icon: <BookOpen size={20} color="#2563EB" />,
@@ -340,6 +349,7 @@ const FamilyDetailPage = () => {
       donations: {
         label: "Donations",
         icon: <Heart size={20} color="#EF4444" />,
+        badge: summary.donations || 0, // ✅ THIS LINE ADDED
         onPress: () => router.push({ pathname: "/family/donations", params }),
       },
       ai: {
@@ -359,6 +369,18 @@ const FamilyDetailPage = () => {
         modules.donations,
         modules.ai,
         modules.invite,
+      ],
+      "Others": [
+        modules.news,
+        modules.tasks,
+        modules.reports,
+        modules.suggestions,
+        modules.polls,
+        modules.donations,
+        modules.ai,
+        modules.invite,
+        modules.safety,
+          modules.keydates,
       ],
       "Alumni Group": [
         modules.news,
@@ -384,6 +406,7 @@ const FamilyDetailPage = () => {
         modules.donations,
         modules.tasks,
         modules.keydates,
+        modules.safety
       ],
       "Extended Family": [
         modules.news,
@@ -400,6 +423,7 @@ const FamilyDetailPage = () => {
         modules.donations,
         modules.tasks,
         modules.keydates,
+        modules.safety
       ],
       "Religious Group": [
         modules.news,
@@ -426,7 +450,7 @@ const FamilyDetailPage = () => {
       ],
     };
 
-    let selectedFeatures = [...(mapping[type] || [ modules.news, modules.ai])];
+    let selectedFeatures = [...(mapping[type] || [modules.news, modules.ai])];
 
     // ONLY SHOW ADMIN IF OWNER (currently commented out in original)
     // if (isOwner) {

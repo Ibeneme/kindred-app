@@ -27,7 +27,8 @@ export interface User {
     expoPushToken: string | null;
     notificationPreferences: NotificationPrefs;
     privacySettings: PrivacySettings;
-    id?: any
+    id?: any;
+    isOnline?: boolean
 }
 
 interface UserState {

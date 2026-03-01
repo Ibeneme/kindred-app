@@ -1,9 +1,16 @@
-import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, PayloadAction, AnyAction } from "@reduxjs/toolkit";
 import axiosInstance from "../services/axiosInstance";
 
-// --- Types ---
+// --- Interfaces ---
 
-interface Campaign {
+export interface AccountDetails {
+    accountNumber: string;
+    bankName: string;
+    accountName: string;
+    otherDetails?: string;
+}
+
+export interface Campaign {
     _id: string;
     family: string;
     createdBy: {
@@ -13,41 +20,62 @@ interface Campaign {
         email: string;
     };
     title: string;
-    description: string;
+    purpose: string;
     targetAmount: number;
-    currentAmount: number;
+    totalRaised: number;
     minimumDonation: number;
     deadline: string;
-    status: "active" | "completed" | "cancelled";
+    accountDetails: AccountDetails;
+    visibility: "PUBLIC" | "PRIVATE" | "HIDDEN";
+    status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+    createdAt: string;
+}
+
+export interface Contribution {
+    _id: string;
+    campaign: string | { _id: string; title: string; status: string };
+    contributor: {
+        _id: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+    };
+    amountSent: number;
+    paymentProof: {
+        url: string;
+        size: number;
+    };
+    displayPreference: "NAMED" | "ANONYMOUS";
+    verificationStatus: "PENDING" | "VERIFIED" | "REJECTED";
+    rejectionReason?: string;
     createdAt: string;
 }
 
 interface DonationState {
     campaigns: Campaign[];
+    familyContributions: Contribution[]; // For Admins/Creators to verify
+    myContributions: Contribution[];     // For Users to see their history
     loading: boolean;
+    isSubmitting: boolean;
     error: string | null;
 }
 
 const initialState: DonationState = {
     campaigns: [],
+    familyContributions: [],
+    myContributions: [],
     loading: false,
+    isSubmitting: false,
     error: null,
 };
 
 // --- Async Thunks ---
 
-// 1. Create Campaign
 export const createCampaign = createAsyncThunk(
     "donation/createCampaign",
-    async (
-        { familyId, data }: { familyId: string; data: Partial<Campaign> },
-        { rejectWithValue }
-    ) => {
+    async ({ familyId, data }: { familyId: string; data: Partial<Campaign> }, { rejectWithValue }) => {
         try {
-            const response = await axiosInstance.post(
-                `/donations/families/${familyId}/donations`,
-                data
-            );
+            const response = await axiosInstance.post(`/donations/families/${familyId}/donations`, data);
             return response.data.campaign;
         } catch (error: any) {
             return rejectWithValue(error.response?.data?.message || "Failed to create campaign");
@@ -55,26 +83,21 @@ export const createCampaign = createAsyncThunk(
     }
 );
 
-// 2. Get Campaigns by Family ID
 export const getFamilyCampaigns = createAsyncThunk(
     "donation/getFamilyCampaigns",
     async (familyId: string, { rejectWithValue }) => {
         try {
             const response = await axiosInstance.get(`/donations/families/${familyId}/donations`);
-            return response.data; // This is the array of campaigns
+            return response.data;
         } catch (error: any) {
             return rejectWithValue(error.response?.data?.message || "Failed to fetch campaigns");
         }
     }
 );
 
-// 3. Update Campaign
 export const updateCampaign = createAsyncThunk(
     "donation/updateCampaign",
-    async (
-        { campaignId, data }: { campaignId: string; data: Partial<Campaign> },
-        { rejectWithValue }
-    ) => {
+    async ({ campaignId, data }: { campaignId: string; data: Partial<Campaign> }, { rejectWithValue }) => {
         try {
             const response = await axiosInstance.put(`/donations/donations/${campaignId}`, data);
             return response.data.campaign;
@@ -84,7 +107,6 @@ export const updateCampaign = createAsyncThunk(
     }
 );
 
-// 4. Delete Campaign
 export const deleteCampaign = createAsyncThunk(
     "donation/deleteCampaign",
     async (campaignId: string, { rejectWithValue }) => {
@@ -93,6 +115,64 @@ export const deleteCampaign = createAsyncThunk(
             return campaignId;
         } catch (error: any) {
             return rejectWithValue(error.response?.data?.message || "Failed to delete campaign");
+        }
+    }
+);
+
+export const contributeToCampaign = createAsyncThunk(
+    "donation/contributeToCampaign",
+    async ({ campaignId, formData }: { campaignId: string; formData: FormData }, { rejectWithValue }) => {
+        try {
+            const response = await axiosInstance.post(
+                `/donations/donations/${campaignId}/contribute`,
+                formData,
+                { headers: { "Content-Type": "multipart/form-data" } }
+            );
+            return response.data.contribution;
+        } catch (error: any) {
+            return rejectWithValue(error.response?.data?.message || "Failed to submit contribution");
+        }
+    }
+);
+
+export const getAdminFamilyContributions = createAsyncThunk(
+    "donation/getAdminFamilyContributions",
+    async (familyId: string, { rejectWithValue }) => {
+        try {
+            const response = await axiosInstance.get(`/donations/families/${familyId}/admin/contributions`);
+            return response.data;
+        } catch (error: any) {
+            return rejectWithValue(error.response?.data?.message || "Failed to fetch admin list");
+        }
+    }
+);
+
+export const verifyContribution = createAsyncThunk(
+    "donation/verifyContribution",
+    async (
+        { contributionId, status, rejectionReason }: { contributionId: string; status: "VERIFIED" | "REJECTED"; rejectionReason?: string },
+        { rejectWithValue }
+    ) => {
+        try {
+            const response = await axiosInstance.patch(`/donations/contributions/${contributionId}/verify`, {
+                status,
+                rejectionReason,
+            });
+            return response.data.contribution;
+        } catch (error: any) {
+            return rejectWithValue(error.response?.data?.message || "Verification failed");
+        }
+    }
+);
+
+export const getMyContributions = createAsyncThunk(
+    "donation/getMyContributions",
+    async (_, { rejectWithValue }) => {
+        try {
+            const response = await axiosInstance.get(`/donations/my-contributions`);
+            return response.data;
+        } catch (error: any) {
+            return rejectWithValue(error.response?.data?.message || "Failed to fetch history");
         }
     }
 );
@@ -106,42 +186,73 @@ const donationSlice = createSlice({
         clearDonationError: (state) => {
             state.error = null;
         },
+        resetAdminState: (state) => {
+            state.familyContributions = [];
+        }
     },
     extraReducers: (builder) => {
         builder
-            // Fetch Campaigns
-            .addCase(getFamilyCampaigns.pending, (state) => {
-                state.loading = true;
-                state.error = null;
-            })
-            .addCase(getFamilyCampaigns.fulfilled, (state, action: PayloadAction<Campaign[]>) => {
+            .addCase(getFamilyCampaigns.fulfilled, (state, action) => {
                 state.loading = false;
                 state.campaigns = action.payload;
             })
-            .addCase(getFamilyCampaigns.rejected, (state, action) => {
+            .addCase(createCampaign.fulfilled, (state, action) => {
+                state.isSubmitting = false;
+                state.campaigns.unshift(action.payload);
+            })
+            .addCase(deleteCampaign.fulfilled, (state, action) => {
+                state.campaigns = state.campaigns.filter((c) => c._id !== action.payload);
+            })
+            .addCase(getAdminFamilyContributions.fulfilled, (state, action) => {
                 state.loading = false;
-                state.error = action.payload as string;
+                state.familyContributions = action.payload;
             })
-
-            // Create Campaign
-            .addCase(createCampaign.fulfilled, (state, action: PayloadAction<Campaign>) => {
-                state.campaigns.unshift(action.payload); // Add new campaign to start of list
-            })
-
-            // Update Campaign
-            .addCase(updateCampaign.fulfilled, (state, action: PayloadAction<Campaign>) => {
-                const index = state.campaigns.findIndex((c) => c._id === action.payload._id);
+            .addCase(verifyContribution.fulfilled, (state, action: PayloadAction<Contribution>) => {
+                state.isSubmitting = false;
+                const index = state.familyContributions.findIndex((c) => c._id === action.payload._id);
                 if (index !== -1) {
-                    state.campaigns[index] = action.payload;
+                    state.familyContributions[index] = action.payload;
+                }
+
+                if (action.payload.verificationStatus === "VERIFIED") {
+                    const campId = typeof action.payload.campaign === 'string'
+                        ? action.payload.campaign
+                        : action.payload.campaign._id;
+
+                    const campIndex = state.campaigns.findIndex((c) => c._id === campId);
+                    if (campIndex !== -1) {
+                        state.campaigns[campIndex].totalRaised += action.payload.amountSent;
+                    }
                 }
             })
+            .addCase(getMyContributions.fulfilled, (state, action) => {
+                state.loading = false;
+                state.myContributions = action.payload;
+            })
 
-            // Delete Campaign
-            .addCase(deleteCampaign.fulfilled, (state, action: PayloadAction<string>) => {
-                state.campaigns = state.campaigns.filter((c) => c._id !== action.payload);
-            });
+            // --- Matchers with Fixed Typing ---
+            .addMatcher(
+                (action): action is AnyAction => action.type.endsWith("/pending"),
+                (state, action) => {
+                    if (action.type.includes("create") || action.type.includes("verify") || action.type.includes("contribute")) {
+                        state.isSubmitting = true;
+                    } else {
+                        state.loading = true;
+                    }
+                    state.error = null;
+                }
+            )
+            .addMatcher(
+                (action): action is AnyAction => action.type.endsWith("/rejected"),
+                (state, action) => {
+                    state.loading = false;
+                    state.isSubmitting = false;
+                    // Fixed: TS now recognizes payload via AnyAction cast
+                    state.error = (action.payload as string) || "An unexpected error occurred";
+                }
+            );
     },
 });
 
-export const { clearDonationError } = donationSlice.actions;
+export const { clearDonationError, resetAdminState } = donationSlice.actions;
 export default donationSlice.reducer;

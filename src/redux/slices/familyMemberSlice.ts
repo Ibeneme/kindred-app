@@ -24,6 +24,7 @@ export interface FamilyMember {
     joinedAt: string;
     rights: MemberRights;
     restrictionReason?: string;
+    isOnline?: any
 }
 
 interface FamilyMemberState {

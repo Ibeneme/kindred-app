@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   FlatList,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -18,6 +19,8 @@ import {
   CheckCircle2,
   Circle,
   BarChart3,
+  Search,
+  X,
 } from "lucide-react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
@@ -35,17 +38,15 @@ const PollsPage = () => {
     isOwner: string;
   }>();
 
-  // (B) Logic: Only admins/moderators can launch polls.
-  // userIsOwner acts as our admin/moderator check here.
   const userIsOwner = isOwner === "true";
-
   const dispatch = useDispatch<AppDispatch>();
   const { polls = [], loading = false } = useSelector(
     (state: RootState) => state.polls
   );
 
   const [refreshing, setRefreshing] = useState(false);
-  // (A) State to track local selection to prevent double-tap before server response
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchActive, setIsSearchActive] = useState(false);
   const [optimisticVotes, setOptimisticVotes] = useState<
     Record<string, string>
   >({});
@@ -61,7 +62,16 @@ const PollsPage = () => {
     dispatch(fetchPollsByFamily(familyId)).finally(() => setRefreshing(false));
   }, [familyId, dispatch]);
 
-  // (C) Helper to check if the window for voting has closed
+  // Filter polls based on search query
+  const filteredPolls = useMemo(() => {
+    if (!searchQuery.trim()) return polls;
+    return polls.filter(
+      (poll: any) =>
+        poll.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        poll.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [polls, searchQuery]);
+
   const isPollClosed = (endDate: string | Date) => {
     if (!endDate) return false;
     return new Date(endDate).getTime() < Date.now();
@@ -71,13 +81,11 @@ const PollsPage = () => {
     const poll = polls.find((p) => p._id === pollId);
     if (!poll) return;
 
-    // (C) Restriction: Check if window has passed
     if (isPollClosed(poll?.endDate)) {
       Alert.alert("Poll Closed", "Voting has ended for this poll.");
       return;
     }
 
-    // (A) Restriction: Prevent voting twice or changing choice if logic forbids it
     if (poll.userVotedOptionId || optimisticVotes[pollId]) {
       Alert.alert("Already Voted", "You have already cast your vote.");
       return;
@@ -85,10 +93,11 @@ const PollsPage = () => {
 
     setOptimisticVotes((prev) => ({ ...prev, [pollId]: optionId }));
 
-    const result = await dispatch(voteInPoll({ pollId, optionId }));
-
-    if (voteInPoll.rejected.match(result)) {
-      // Rollback optimistic vote on error
+    try {
+      // Execute vote and then force reload from server
+      await dispatch(voteInPoll({ pollId, optionId })).unwrap();
+      dispatch(fetchPollsByFamily(familyId)); // RELOAD ON VOTE
+    } catch (error) {
       setOptimisticVotes((prev) => {
         const next = { ...prev };
         delete next[pollId];
@@ -96,18 +105,6 @@ const PollsPage = () => {
       });
       Alert.alert("Error", "Failed to cast vote. Please try again.");
     }
-  };
-
-  const navigateToCreate = () => {
-    // (B) Double check even if FAB is hidden
-    if (!userIsOwner) {
-      Alert.alert("Restricted", "Only admins/moderators can launch polls.");
-      return;
-    }
-    router.push({
-      pathname: "/family/polls/create-poll",
-      params: { familyId },
-    });
   };
 
   const renderPollCard = ({ item }: { item: any }) => {
@@ -138,18 +135,14 @@ const PollsPage = () => {
           {userIsOwner && (
             <TouchableOpacity
               onPress={() => {
-                Alert.alert(
-                  "Delete Poll",
-                  "Are you sure? Results will be lost.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: () => dispatch(deletePoll(item._id)),
-                    },
-                  ]
-                );
+                Alert.alert("Delete Poll", "Are you sure?", [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => dispatch(deletePoll(item._id)),
+                  },
+                ]);
               }}
               style={styles.deleteBtn}
             >
@@ -174,7 +167,6 @@ const PollsPage = () => {
                   (closed || hasVoted) && styles.disabledOption,
                 ]}
                 onPress={() => handleVote(item._id, opt._id)}
-                // (C) Disable interaction if closed or (A) already voted
                 disabled={closed || hasVoted}
                 activeOpacity={0.7}
               >
@@ -227,57 +219,75 @@ const PollsPage = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <ArrowLeft size={24} color="#111827" />
-        </TouchableOpacity>
-        <AppText type="bold" style={styles.headerTitle}>
-          Family Polls
-        </AppText>
-        <View style={{ width: 40 }} />
+        {!isSearchActive ? (
+          <>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <ArrowLeft size={24} color="#111827" />
+            </TouchableOpacity>
+            <AppText type="bold" style={styles.headerTitle}>
+              Family Polls
+            </AppText>
+            <TouchableOpacity
+              onPress={() => setIsSearchActive(true)}
+              style={styles.backButton}
+            >
+              <Search size={22} color="#111827" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.searchBar}>
+            <Search size={20} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search polls..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearchActive(false);
+                setSearchQuery("");
+              }}
+            >
+              <X size={20} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {loading && polls.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator color="#EAB308" size="large" />
-        </View>
-      ) : (
-        <FlatList
-          data={polls}
-          renderItem={renderPollCard}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#EAB308"
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <BarChart3 size={48} color="#D1D5DB" />
-              <AppText style={styles.emptyText}>
-                No polls active right now.
-              </AppText>
-              {userIsOwner && (
-                <AppText style={{ color: "#9CA3AF", marginTop: 5 }}>
-                  Launch one to get family feedback!
-                </AppText>
-              )}
-            </View>
-          }
-        />
-      )}
+      <FlatList
+        data={filteredPolls}
+        renderItem={renderPollCard}
+        keyExtractor={(item) => item._id}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || loading}
+            onRefresh={onRefresh}
+            tintColor="#EAB308"
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <BarChart3 size={48} color="#D1D5DB" />
+            <AppText style={styles.emptyText}>No polls found.</AppText>
+          </View>
+        }
+      />
 
-      {/* (B) Security: Only show FAB to Admin/Moderator */}
       {userIsOwner && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={navigateToCreate}
-          activeOpacity={0.8}
+          onPress={() =>
+            router.push({
+              pathname: "/family/polls/create-poll",
+              params: { familyId },
+            })
+          }
         >
           <Plus size={30} color="#FFF" />
         </TouchableOpacity>
@@ -298,10 +308,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
+  searchBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    marginVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 10,
+  },
+  searchInput: { flex: 1, height: 40, fontSize: 16, color: "#111827" },
   backButton: { padding: 5 },
   headerTitle: { fontSize: 18, color: "#111827" },
   list: { padding: 16, paddingBottom: 100 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: {
     backgroundColor: "#FFF",
     borderRadius: 16,
@@ -381,10 +401,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   emptyContainer: {
     flex: 1,

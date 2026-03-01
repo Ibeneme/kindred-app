@@ -62,8 +62,6 @@ interface Message {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const MAX_IMAGE_SIZE_MB = 25;
-const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const EDIT_DELETE_WINDOW_MINUTES = 5;
 
 const PRIMARY_YELLOW = "#FBBF24";
@@ -99,18 +97,20 @@ const ChatScreen = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [showOptions, setShowOptions] = useState(false);
 
-  // Voice states
+  // Voice recording & preview states
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewSound, setPreviewSound] = useState<Audio.Sound | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Chat playback
+  // Chat message playback & Race Condition prevention
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const [isAudioBusy, setIsAudioBusy] = useState(false);
 
   // Image viewer
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -131,7 +131,7 @@ const ChatScreen = () => {
     }, 200);
   }, []);
 
-  // Audio setup
+  // Audio mode setup
   useEffect(() => {
     (async () => {
       try {
@@ -157,7 +157,7 @@ const ChatScreen = () => {
     });
   };
 
-  // Socket logic
+  // ── Socket logic ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!socket || !uuid) return;
 
@@ -174,6 +174,9 @@ const ChatScreen = () => {
         const minutesDiff = (now - msgTime) / 60000;
         return {
           ...m,
+          uuid: m.messageUuid || m.uuid,
+          imageuri: m.messageType === "image" ? m.mediaUri : undefined,
+          audioUri: m.messageType === "voice" ? m.mediaUri : undefined,
           status: "sent",
           canEdit:
             m.senderId === senderId &&
@@ -212,13 +215,28 @@ const ChatScreen = () => {
 
     socket.on("receive_message", (data: any) => {
       setMessages((prev) => {
-        const exists = prev.some((m) => m.uuid === data.uuid);
+        const targetUuid = data.messageUuid || data.uuid;
+        const exists = prev.some((m) => m.uuid === targetUuid);
+
+        const formattedMsg: Message = {
+          ...data,
+          uuid: targetUuid,
+          imageuri:
+            data.messageType === "image"
+              ? data.mediaUri || data.imageuri
+              : undefined,
+          audioUri:
+            data.messageType === "voice"
+              ? data.mediaUri || data.audioUri
+              : undefined,
+          status: "sent",
+          canEdit: false,
+        };
+
         if (exists) {
-          return prev.map((m) =>
-            m.uuid === data.uuid ? { ...m, ...data, status: "sent" } : m
-          );
+          return prev.map((m) => (m.uuid === targetUuid ? formattedMsg : m));
         }
-        return [...prev, { ...data, status: "sent", canEdit: false }];
+        return [...prev, formattedMsg];
       });
       scrollToBottom();
     });
@@ -259,16 +277,53 @@ const ChatScreen = () => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, [socket, uuid]);
 
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      stopTyping();
-      timerRef.current && clearInterval(timerRef.current);
-      recording?.stopAndUnloadAsync().catch(() => {});
-      previewSound?.unloadAsync().catch(() => {});
-      soundRef.current?.unloadAsync().catch(() => {});
-    };
-  }, [recording, previewSound, stopTyping]);
+  // ── FIXED AUDIO HANDLER (Race Condition Fix) ────────────────────────────────
+  const handleToggleAudioPlayback = async (
+    uri: string,
+    messageUuid: string
+  ) => {
+    if (isAudioBusy) return;
+
+    try {
+      setIsAudioBusy(true);
+
+      // 1. If tapping the same audio that is playing -> Stop it
+      if (playingId === messageUuid) {
+        if (soundRef.current) {
+          await soundRef.current.stopAsync();
+          await soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+        setPlayingId(null);
+        return;
+      }
+
+      // 2. If something else is playing -> Stop and Unload it first
+      if (soundRef.current) {
+        await soundRef.current.stopAsync().catch(() => {});
+        await soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
+      }
+
+      // 3. Load and play new sound
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setPlayingId(null);
+          }
+        }
+      );
+
+      soundRef.current = sound;
+      setPlayingId(messageUuid);
+    } catch (error) {
+      console.error("Audio playback error:", error);
+    } finally {
+      setIsAudioBusy(false);
+    }
+  };
 
   // ── Voice Recording Functions ───────────────────────────────────────────────
 
@@ -280,17 +335,20 @@ const ChatScreen = () => {
         return;
       }
 
-      // Clean up previous states
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync().catch(() => {});
+        setPlayingId(null);
+      }
+
       if (recording) {
         await recording.stopAndUnloadAsync().catch(() => {});
       }
-      if (previewSound) {
-        await previewSound.unloadAsync().catch(() => {});
-      }
+
       setRecording(null);
       setPreviewSound(null);
       setPreviewUri(null);
       setIsPreviewPlaying(false);
+      setPreviewCurrentTime(0);
       setRecordDuration(0);
 
       const newRec = new Audio.Recording();
@@ -301,84 +359,85 @@ const ChatScreen = () => {
 
       setRecording(newRec);
       setIsRecording(true);
-      setRecordDuration(0);
 
-      timerRef.current = setInterval(() => {
+      recordingTimerRef.current = setInterval(() => {
         setRecordDuration((prev) => prev + 1);
       }, 1000);
     } catch (err) {
       console.error("Start recording error:", err);
-      Alert.alert("Error", "Failed to start recording.");
     }
   };
 
   const stopRecording = async () => {
     if (!recording) return;
-
     setIsRecording(false);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
     }
 
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
-      if (uri) {
-        setPreviewUri(uri);
-        const { sound } = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: false }
-        );
-        setPreviewSound(sound);
+      if (!uri) throw new Error("No recording URI");
+
+      setPreviewUri(uri);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: false }
+      );
+      setPreviewSound(sound);
+
+      const status = await sound.getStatusAsync();
+      if (status.isLoaded) {
+        setRecordDuration(Math.round(status.durationMillis! / 1000));
       }
     } catch (err) {
-      console.error("Stop recording error:", err);
+      console.error("Stop recording failed:", err);
     } finally {
       setRecording(null);
     }
   };
 
-  const reRecord = () => {
-    cancelPreview();
-    startRecording();
-  };
-
   const togglePreviewPlayback = async () => {
-    if (!previewSound) return;
-
+    if (!previewSound || !previewUri) return;
     try {
       if (isPreviewPlaying) {
         await previewSound.pauseAsync();
         setIsPreviewPlaying(false);
-      } else {
-        await previewSound.replayAsync();
-        setIsPreviewPlaying(true);
-
-        previewSound.setOnPlaybackStatusUpdate((status: any) => {
-          if (status.didJustFinish) {
-            setIsPreviewPlaying(false);
-          }
-        });
+        return;
       }
-    } catch (err) {
-      console.error("Playback error:", err);
+      await previewSound.setPositionAsync(0);
+      await previewSound.playAsync();
+      setIsPreviewPlaying(true);
+
+      previewSound.setOnPlaybackStatusUpdate((playbackStatus) => {
+        if (playbackStatus.isLoaded) {
+          setPreviewCurrentTime(
+            Math.floor(playbackStatus.positionMillis / 1000)
+          );
+          if (playbackStatus.didJustFinish) {
+            setIsPreviewPlaying(false);
+            setPreviewCurrentTime(0);
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Preview playback failed:", error);
     }
   };
 
   const cancelPreview = async () => {
-    if (previewSound) {
-      await previewSound.unloadAsync().catch(() => {});
-    }
+    if (previewSound) await previewSound.unloadAsync().catch(() => {});
     setPreviewSound(null);
     setPreviewUri(null);
     setIsPreviewPlaying(false);
+    setPreviewCurrentTime(0);
     setRecordDuration(0);
   };
 
   const sendVoiceNote = async () => {
     if (!previewUri || !socket) return;
-
     const msgUuid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const optimisticMsg: Message = {
       uuid: msgUuid,
@@ -390,7 +449,6 @@ const ChatScreen = () => {
       audioUri: previewUri,
       duration: recordDuration,
       status: "pending",
-      isRead: false,
       canEdit: false,
     };
 
@@ -401,7 +459,6 @@ const ChatScreen = () => {
       const base64 = await fileToBase64(previewUri);
       socket.emit("send_message", {
         uuid,
-        message: "",
         fullName: senderName,
         userId: senderId,
         receiverId,
@@ -411,39 +468,39 @@ const ChatScreen = () => {
         duration: recordDuration,
         receiverProfilePicture: receiverProfilePicture || "",
       });
-
       cancelPreview();
     } catch (err) {
-      console.error("Send voice failed:", err);
       setMessages((prev) =>
         prev.map((m) => (m.uuid === msgUuid ? { ...m, status: "failed" } : m))
       );
-      Alert.alert("Error", "Could not send voice note");
     }
   };
 
-  // ── Other functions (image, send text, edit, delete) remain unchanged ──────
+  // ── Image Handling (FIXED BUG) ──────────────────────────────────────────────
 
   const handlePickImage = async () => {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") return;
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.82,
-      });
-      if (result.canceled || !result.assets?.length) return;
-      const uri = result.assets[0].uri;
-      const info = await FileSystemLegacy.getInfoAsync(uri);
-      if ("size" in info && info.size > MAX_IMAGE_SIZE_BYTES) {
-        Alert.alert("Too Large", `Max size: ${MAX_IMAGE_SIZE_MB}MB`);
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Gallery access is needed.");
         return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const { uri, base64 } = result.assets[0];
       const msgUuid = `${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 10)}`;
+
+      // 1. Optimistic UI update
       const optimisticMsg: Message = {
         uuid: msgUuid,
         message: "",
@@ -453,13 +510,14 @@ const ChatScreen = () => {
         messageType: "image",
         imageuri: uri,
         status: "pending",
-        isRead: false,
         canEdit: false,
       };
+
       setMessages((prev) => [...prev, optimisticMsg]);
-      scrollToBottom();
       setShowOptions(false);
-      const base64 = await fileToBase64(uri);
+      scrollToBottom();
+
+      // 2. Emit to socket
       socket?.emit("send_message", {
         uuid,
         message: "",
@@ -472,9 +530,11 @@ const ChatScreen = () => {
         receiverProfilePicture: receiverProfilePicture || "",
       });
     } catch (err) {
-      Alert.alert("Error", "Could not pick image");
+      console.error("Image pick error:", err);
     }
   };
+
+  // ── Text Messaging Logic ─────────────────────────────────────────────────────
 
   const handleSendOrEditMessage = () => {
     if (!socket) return;
@@ -506,7 +566,6 @@ const ChatScreen = () => {
         timestamp: new Date().toISOString(),
         messageType: "text",
         status: "pending",
-        isRead: false,
         canEdit: true,
       };
       setMessages((prev) => [...prev, optimisticMsg]);
@@ -533,48 +592,30 @@ const ChatScreen = () => {
 
   const handleDeleteMessage = (forEveryone = false) => {
     if (!selectedMessage) return;
-    Alert.alert(
-      forEveryone ? "Delete for Everyone?" : "Delete for Me?",
-      forEveryone
-        ? "This removes the message for both sides."
-        : "This removes it only from your view.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            socket?.emit("delete_message", {
-              uuid,
-              messageUuid: selectedMessage.uuid,
-              userId: senderId,
-              forEveryone,
-            });
-            setMessages((prev) =>
-              prev.filter((m) => m.uuid !== selectedMessage.uuid)
-            );
-            setMessageOptionsVisible(false);
-            setSelectedMessage(null);
-          },
-        },
-      ]
-    );
+    socket?.emit("delete_message", {
+      uuid,
+      messageUuid: selectedMessage.uuid,
+      userId: senderId,
+      forEveryone,
+    });
+    setMessages((prev) => prev.filter((m) => m.uuid !== selectedMessage.uuid));
+    setMessageOptionsVisible(false);
   };
 
   const startEditMessage = () => {
-    if (
-      !selectedMessage ||
-      !selectedMessage.canEdit ||
-      selectedMessage.messageType !== "text"
-    )
-      return;
+    if (!selectedMessage || selectedMessage.messageType !== "text") return;
     setEditingMessageId(selectedMessage.uuid);
     setEditText(selectedMessage.message);
     setMessageOptionsVisible(false);
-    setSelectedMessage(null);
   };
 
-  // ── Render single message ────────────────────────────────────────────────────
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // ── RENDER ITEM ─────────────────────────────────────────────────────────────
   const renderMessageItem = useCallback(
     ({ item }: { item: Message }) => {
       const isMe = item.senderId === senderId;
@@ -611,44 +652,32 @@ const ChatScreen = () => {
               </TouchableOpacity>
             )}
 
-            {item.messageType === "voice" && item.audioUri && (
-              <TouchableOpacity
-                style={styles.voiceRow}
-                onPress={() => {
-                  if (item.status === "pending") return;
-                  if (playingId === item.uuid) {
-                    soundRef.current?.pauseAsync();
-                    setPlayingId(null);
-                  } else {
-                    soundRef.current?.unloadAsync().catch(() => {});
-                    Audio.Sound.createAsync({ uri: item.audioUri! }).then(
-                      ({ sound }) => {
-                        soundRef.current = sound;
-                        setPlayingId(item.uuid);
-                        sound.playAsync();
-                        sound.setOnPlaybackStatusUpdate((st: any) => {
-                          if (st.didJustFinish) setPlayingId(null);
-                        });
-                      }
-                    );
+            {item.messageType === "voice" &&
+              (item.audioUri || item.status === "pending") && (
+                <TouchableOpacity
+                  style={styles.voiceRow}
+                  disabled={item.status === "pending"}
+                  onPress={() =>
+                    handleToggleAudioPlayback(item.audioUri!, item.uuid)
                   }
-                }}
-              >
-                {playingId === item.uuid ? (
-                  <Pause size={26} color={isMe ? "#FFF" : "#111827"} />
-                ) : (
-                  <Play size={26} color={isMe ? "#FFF" : "#111827"} />
-                )}
-                <AppText
-                  style={[
-                    styles.voiceLabel,
-                    isMe ? { color: "#FFF" } : { color: "#111827" },
-                  ]}
                 >
-                  Voice • {item.duration || 0}s
-                </AppText>
-              </TouchableOpacity>
-            )}
+                  {playingId === item.uuid ? (
+                    <Pause size={26} color={isMe ? "#FFF" : "#111827"} />
+                  ) : (
+                    <Play size={26} color={isMe ? "#FFF" : "#111827"} />
+                  )}
+                  <AppText
+                    style={[
+                      styles.voiceLabel,
+                      { color: isMe ? "#FFF" : "#111827" },
+                    ]}
+                  >
+                    {item.status === "pending"
+                      ? "Uploading..."
+                      : `Voice • ${formatDuration(item.duration || 0)}`}
+                  </AppText>
+                </TouchableOpacity>
+              )}
 
             {item.messageType === "text" && (
               <AppText
@@ -663,24 +692,24 @@ const ChatScreen = () => {
 
             {isMe && (
               <View style={styles.statusRow}>
-                {item.status === "pending" && <Clock size={14} color={GRAY} />}
-                {item.status === "sent" && item.isRead ? (
+                {item.status === "pending" ? (
+                  <Clock size={14} color={GRAY} />
+                ) : item.isRead ? (
                   <CheckCheck size={16} color="#60A5FA" />
-                ) : item.status === "sent" ? (
+                ) : (
                   <Check size={16} color={GRAY} />
-                ) : null}
+                )}
               </View>
             )}
           </View>
         </Pressable>
       );
     },
-    [senderId, playingId]
+    [senderId, playingId, isAudioBusy]
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -688,7 +717,6 @@ const ChatScreen = () => {
         >
           <ChevronLeft size={28} color="#111827" />
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.profileContainer}
           onPress={() =>
@@ -711,27 +739,21 @@ const ChatScreen = () => {
           <View style={{ marginLeft: 12 }}>
             <AppText
               type="bold"
-              style={[
-                styles.receiverName,
-                { textDecorationLine: "underline", color: PRIMARY_YELLOW },
-              ]}
+              style={[styles.receiverName, { color: PRIMARY_YELLOW }]}
             >
               {receiverName || "Chat"}
             </AppText>
-            <AppText style={styles.statusText}>
-              {isOtherUserTyping ? (
+            {isOtherUserTyping && (
+              <AppText style={styles.statusText}>
                 <Animated.Text style={{ opacity: typingAnim }}>
                   {typingName} is typing...
                 </Animated.Text>
-              ) : null}
-            </AppText>
+              </AppText>
+            )}
           </View>
         </TouchableOpacity>
-
         <TouchableOpacity
-          onPress={() =>
-            Alert.alert("Video Call", "Video call feature is Coming Soon!")
-          }
+          onPress={() => Alert.alert("Coming Soon")}
           style={{ padding: 8 }}
         >
           <Video size={26} color="#111827" />
@@ -753,7 +775,6 @@ const ChatScreen = () => {
           onLayout={scrollToBottom}
         />
 
-        {/* Bottom input area */}
         <View style={styles.bottomContainer}>
           {showOptions && (
             <View style={styles.optionsContainer}>
@@ -768,7 +789,6 @@ const ChatScreen = () => {
                 </View>
                 <AppText style={styles.optionLabel}>Photo</AppText>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.optionItem}
                 onPress={startRecording}
@@ -784,14 +804,14 @@ const ChatScreen = () => {
           )}
 
           <View style={styles.inputBar}>
-            {/* LIVE RECORDING */}
-            {isRecording && (
+            {isRecording ? (
               <View style={styles.recordingActiveContainer}>
                 <View style={styles.recordingInfo}>
                   <View style={styles.liveDot} />
-                  <AppText style={styles.recordingLabel}>Recording...</AppText>
+                  <AppText style={styles.recordingLabel}>
+                    Recording... {formatDuration(recordDuration)}
+                  </AppText>
                 </View>
-
                 <TouchableOpacity
                   style={styles.stopButton}
                   onPress={stopRecording}
@@ -799,58 +819,32 @@ const ChatScreen = () => {
                   <Square size={36} color="#FFF" fill="#EF4444" />
                 </TouchableOpacity>
               </View>
-            )}
-
-            {/* VOICE PREVIEW */}
-            {previewUri && !isRecording && (
+            ) : previewUri ? (
               <View style={styles.voicePreviewContainer}>
-                <TouchableOpacity
-                  onPress={cancelPreview}
-                  style={styles.cancelIcon}
-                >
+                <TouchableOpacity onPress={cancelPreview}>
                   <Trash2 size={26} color="#EF4444" />
                 </TouchableOpacity>
-
-                <View style={styles.previewCenter}>
-                  <TouchableOpacity
-                    onPress={togglePreviewPlayback}
-                    style={styles.playPauseBtn}
-                  >
-                    {isPreviewPlaying ? (
-                      <>
-                        <Pause size={28} color="#111827" />
-                        <AppText style={styles.previewStatus}>
-                          Playing...
-                        </AppText>
-                      </>
-                    ) : (
-                      <>
-                        <Play size={28} color="#111827" />
-                        <AppText style={styles.previewStatus}>
-                          Voice Note
-                        </AppText>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.previewActions}>
-                  <TouchableOpacity onPress={reRecord}>
-                    <AppText style={styles.reRecordText}>Re-record</AppText>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.sendFinalBtn}
-                    onPress={sendVoiceNote}
-                  >
-                    <Send size={26} color="#FFF" />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={togglePreviewPlayback}
+                  style={styles.playPauseBtn}
+                >
+                  {isPreviewPlaying ? (
+                    <Pause size={28} color="#111827" />
+                  ) : (
+                    <Play size={28} color="#111827" />
+                  )}
+                  <AppText>
+                    {isPreviewPlaying ? "Playing..." : "Voice Note"}
+                  </AppText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sendFinalBtn}
+                  onPress={sendVoiceNote}
+                >
+                  <Send size={26} color="#FFF" />
+                </TouchableOpacity>
               </View>
-            )}
-
-            {/* Normal text input */}
-            {!isRecording && !previewUri && (
+            ) : (
               <View style={styles.textInputContainer}>
                 <TouchableOpacity
                   onPress={() => {
@@ -865,30 +859,19 @@ const ChatScreen = () => {
                     <Plus size={24} color={GRAY} />
                   )}
                 </TouchableOpacity>
-
                 <TextInput
                   style={styles.input}
-                  placeholder={
-                    editingMessageId ? "Edit message..." : "Type a message..."
-                  }
+                  placeholder={editingMessageId ? "Edit..." : "Message..."}
                   value={editingMessageId ? editText : inputText}
-                  onChangeText={(text) => {
-                    if (editingMessageId) setEditText(text);
-                    else {
-                      setInputText(text);
-                      if (text.trim().length > 0) emitTyping();
-                      else stopTyping();
-                    }
-                  }}
-                  onFocus={() => {
-                    setShowOptions(false);
-                    if (!editingMessageId && inputText.trim().length > 0)
-                      emitTyping();
-                  }}
+                  onChangeText={(t) =>
+                    editingMessageId
+                      ? setEditText(t)
+                      : (setInputText(t),
+                        t.trim() ? emitTyping() : stopTyping())
+                  }
                   onBlur={stopTyping}
                   multiline
                 />
-
                 <TouchableOpacity
                   onPress={handleSendOrEditMessage}
                   style={styles.sendBtn}
@@ -904,7 +887,6 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
         transparent
@@ -925,7 +907,6 @@ const ChatScreen = () => {
         </View>
       </Modal>
 
-      {/* Message Options Modal */}
       <Modal
         visible={messageOptionsVisible}
         transparent
@@ -937,17 +918,16 @@ const ChatScreen = () => {
           onPress={() => setMessageOptionsVisible(false)}
         >
           <View style={styles.messageOptionsModal}>
-            {selectedMessage?.canEdit &&
-              selectedMessage.messageType === "text" && (
+            {selectedMessage?.messageType === "text" &&
+              selectedMessage.canEdit && (
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={startEditMessage}
                 >
                   <Edit size={22} color="#111827" />
-                  <AppText style={styles.optionText}>Edit Message</AppText>
+                  <AppText style={styles.optionText}>Edit</AppText>
                 </TouchableOpacity>
               )}
-
             <TouchableOpacity
               style={styles.optionRow}
               onPress={() => handleDeleteMessage(false)}
@@ -957,7 +937,6 @@ const ChatScreen = () => {
                 Delete for Me
               </AppText>
             </TouchableOpacity>
-
             {selectedMessage?.canEdit && (
               <TouchableOpacity
                 style={styles.optionRow}
@@ -969,13 +948,6 @@ const ChatScreen = () => {
                 </AppText>
               </TouchableOpacity>
             )}
-
-            <TouchableOpacity
-              style={styles.cancelRow}
-              onPress={() => setMessageOptionsVisible(false)}
-            >
-              <AppText style={styles.cancelText}>Cancel</AppText>
-            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
@@ -983,7 +955,6 @@ const ChatScreen = () => {
   );
 };
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
@@ -1009,33 +980,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  receiverName: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  statusText: { fontSize: 13, color: "#10B981", marginTop: 2 },
+  receiverName: { fontSize: 17, fontWeight: "700" },
+  statusText: { fontSize: 12, color: "#10B981" },
   messagesList: { paddingHorizontal: 16, paddingBottom: 20 },
-  messageContainer: { marginVertical: 6, maxWidth: "80%" },
+  messageContainer: { marginVertical: 6, maxWidth: "85%" },
   leftContainer: { alignSelf: "flex-start" },
   rightContainer: { alignSelf: "flex-end" },
-  bubble: { padding: 12, borderRadius: 20, overflow: "hidden" },
+  bubble: { padding: 12, borderRadius: 20 },
   myBubble: { backgroundColor: PRIMARY_YELLOW },
   theirBubble: { backgroundColor: "#E2E8F0" },
-  messageText: { fontSize: 16 },
+  messageText: { fontSize: 16, color: "#111827" },
   myText: { color: "#111827" },
   theirText: { color: "#1E293B" },
-  messageImage: { width: 240, height: 240, borderRadius: 16 },
+  messageImage: { width: 220, height: 220, borderRadius: 16 },
   imageWrapper: { borderRadius: 16, overflow: "hidden" },
   pendingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
     alignItems: "center",
   },
-  voiceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  voiceLabel: { fontSize: 15, fontWeight: "500", marginLeft: 12 },
+  voiceRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  voiceLabel: { fontSize: 15, marginLeft: 8 },
   statusRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 4 },
   bottomContainer: {
     backgroundColor: "#FFF",
@@ -1043,128 +1009,45 @@ const styles = StyleSheet.create({
     borderTopColor: "#F1F5F9",
   },
   inputBar: { padding: 12 },
-  recordingActiveContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FEF2F2",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 28,
-    marginBottom: 12,
-  },
-  recordingInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  liveDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#EF4444",
-  },
-  recordingLabel: {
-    color: "#DC2626",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  durationText: {
-    color: "#DC2626",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  stopButton: {
-    backgroundColor: "#EF4444",
-    borderRadius: 30,
-    padding: 14,
-  },
-  voicePreviewContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F0FDF4",
-    padding: 16,
-    borderRadius: 28,
-    marginBottom: 12,
-  },
-  cancelIcon: {
-    padding: 8,
-  },
-  previewCenter: {
-    flex: 1,
-    alignItems: "center",
-  },
-  playPauseBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  previewStatus: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  previewActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 20,
-  },
-  reRecordText: {
-    color: PRIMARY_YELLOW_DARK,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  sendFinalBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: PRIMARY_YELLOW_DARK,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   textInputContainer: { flexDirection: "row", alignItems: "center" },
-  addBtn: { padding: 12 },
+  addBtn: { padding: 8 },
   input: {
     flex: 1,
     backgroundColor: "#F1F5F9",
-    borderRadius: 24,
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    maxHeight: 120,
-    marginHorizontal: 8,
+    paddingVertical: 10,
+    maxHeight: 100,
     fontSize: 16,
   },
   sendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: PRIMARY_YELLOW_DARK,
     justifyContent: "center",
     alignItems: "center",
+    marginLeft: 8,
   },
   optionsContainer: {
     flexDirection: "row",
-    paddingVertical: 16,
+    paddingVertical: 15,
     justifyContent: "space-around",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
   },
   optionItem: { alignItems: "center" },
   optionIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 5,
   },
-  optionLabel: { fontSize: 13, color: "#374151" },
+  optionLabel: { fontSize: 12, color: GRAY },
   imageViewerContainer: {
     flex: 1,
     backgroundColor: "#000",
     justifyContent: "center",
-    alignItems: "center",
   },
   closeImageBtn: { position: "absolute", top: 50, right: 20, zIndex: 10 },
   fullImage: { width: SCREEN_WIDTH, height: "80%" },
@@ -1175,21 +1058,50 @@ const styles = StyleSheet.create({
   },
   messageOptionsModal: {
     backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingVertical: 20,
   },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  cancelRow: { paddingVertical: 16, alignItems: "center" },
-  optionText: { fontSize: 16, marginLeft: 16 },
-  cancelText: { color: "#EF4444", fontWeight: "700", fontSize: 16 },
+  optionText: { fontSize: 16, marginLeft: 15 },
+  recordingActiveContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    padding: 10,
+    borderRadius: 25,
+  },
+  recordingInfo: { flexDirection: "row", alignItems: "center" },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#EF4444",
+    marginRight: 10,
+  },
+  recordingLabel: { color: "#EF4444", fontWeight: "600" },
+  stopButton: { backgroundColor: "#EF4444", borderRadius: 20, padding: 8 },
+  voicePreviewContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0FDF4",
+    padding: 10,
+    borderRadius: 25,
+  },
+  playPauseBtn: { flexDirection: "row", alignItems: "center" },
+  sendFinalBtn: {
+    backgroundColor: PRIMARY_YELLOW_DARK,
+    borderRadius: 20,
+    padding: 10,
+  },
 });
 
 export default ChatScreen;

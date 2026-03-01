@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Switch,
   ActivityIndicator,
   Alert,
   RefreshControl,
@@ -16,15 +15,21 @@ import {
   ChevronLeft,
   MessageCircle,
   Edit2,
-  CheckCircle2,
   Lock,
-  Phone, // Added for Call
+  Phone,
+  UserX,
+  UserCheck,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/src/redux/store";
 import { updateFamilyMember } from "@/src/redux/slices/familyMemberSlice";
+import {
+  suspendFamilyMember,
+  unsuspendFamilyMember,
+} from "@/src/redux/slices/familySlice"; // Adjust import based on your file structure
 import axiosInstance from "@/src/redux/services/axiosInstance";
+import { fetchUserProfile } from "@/src/redux/slices/userSlice";
 
 const ROLES = ["Member", "Moderator", "Admin"] as const;
 
@@ -51,18 +56,28 @@ interface Member {
   email?: string;
   profilePicture?: string;
   role: string;
+  isOnline?: boolean;
+  suspended?: boolean;
+  uuid?: string | null;
   rights: Record<(typeof ALL_RIGHTS_KEYS)[number], boolean>;
 }
 
 const FamilyMembersPage = () => {
-  const { familyName, familyId } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     familyName?: string;
     familyId: string;
+    members?: string;
   }>();
 
+  const { familyName, familyId, members: membersParam } = params;
   const router = useRouter();
   const dispatch = useDispatch<any>();
   const { user } = useSelector((state: RootState) => state.user);
+
+  useEffect(() => {
+    dispatch(fetchUserProfile());
+ 
+  }, [dispatch]);
 
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,80 +86,149 @@ const FamilyMembersPage = () => {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const currentUserMember = members.find((m) => m.userId === user?._id);
+  // Helper to identify the current user within the member list
+  const currentUserMember = members.find(
+    (m) => m.userId === user?._id || m._id === user?._id
+  );
   const myFamilyRole = currentUserMember?.role?.toLowerCase() || "";
   const canEdit = ["admin", "owner"].includes(myFamilyRole);
 
+  const normalizeMembers = (data: any[]) => {
+    return data.map((m: any) => {
+      const role = m.role ?? "Member";
+      const baseRights = Object.fromEntries(
+        ALL_RIGHTS_KEYS.map((k) => [k, false])
+      ) as Record<(typeof ALL_RIGHTS_KEYS)[number], boolean>;
+
+      return {
+        ...m,
+        // Crucial: Use _id as userId if userId is missing (per your console logs)
+        userId: m.userId || m._id,
+        role,
+        suspended: m.suspended || false,
+        rights: {
+          ...baseRights,
+          ...m.rights,
+          isAdmin: role.toLowerCase() === "admin",
+          isModerator: role.toLowerCase() === "moderator",
+        },
+      };
+    });
+  };
+
   const fetchFamilyMembers = useCallback(async () => {
+    setError(null);
+
+    // 1. Try loading from navigation params immediately
+    if (membersParam && !refreshing) {
+      try {
+        const parsed = JSON.parse(membersParam);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMembers(normalizeMembers(parsed));
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error("❌ Failed to parse members param", e);
+      }
+    }
+
     if (!familyId) {
-      setError("No family ID provided");
       setLoading(false);
-      setRefreshing(false);
       return;
     }
 
+    // 2. Fetch/Refresh from API
     try {
-      setError(null);
       const res = await axiosInstance.post("/family-members/get-members", {
         familyId,
       });
-      const serverMembers = res.data.members || [];
-
-      const normalized = serverMembers.map((m: any) => {
-        const role = m.role ?? "Member";
-        const baseRights = Object.fromEntries(
-          ALL_RIGHTS_KEYS.map((k) => [k, false])
-        ) as Record<(typeof ALL_RIGHTS_KEYS)[number], boolean>;
-
-        return {
-          ...m,
-          role,
-          rights: {
-            ...baseRights,
-            ...m.rights,
-            isAdmin: role.toLowerCase() === "admin",
-            isModerator: role.toLowerCase() === "moderator",
-          },
-        };
-      });
-
-      setMembers(normalized);
+      if (res.data.members && res.data.members.length > 0) {
+        setMembers(normalizeMembers(res.data.members));
+      } else if (members.length === 0) {
+        setError("No members found.");
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to load family members");
+      if (members.length === 0) setError("Failed to load members.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [familyId]);
+  }, [familyId, membersParam, refreshing, members.length]);
 
   useEffect(() => {
     fetchFamilyMembers();
   }, [fetchFamilyMembers]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = () => {
     setRefreshing(true);
     fetchFamilyMembers();
-  }, [fetchFamilyMembers]);
+  };
 
-  const handleMemberPress = (member: any) => {
-    if (!user) return;
-    if (user._id === member._id) return;
-    console.warn(member, "membermember");
+  const handleToggleSuspension = async (member: Member) => {
+    const actionLabel = member.suspended ? "unsuspend" : "suspend";
+    const targetUserId = member.userId || member._id;
+
+    Alert.alert(
+      "Confirm Action",
+      `Are you sure you want to ${actionLabel} ${member.firstName}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          style: member.suspended ? "default" : "destructive",
+          onPress: async () => {
+            try {
+              if (member.suspended) {
+                await dispatch(
+                  unsuspendFamilyMember({ familyId, userId: targetUserId })
+                ).unwrap();
+              } else {
+                await dispatch(
+                  suspendFamilyMember({ familyId, userId: targetUserId })
+                ).unwrap();
+              }
+              // Update local state UI
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m._id === member._id || m.userId === targetUserId
+                    ? { ...m, suspended: !m.suspended }
+                    : m
+                )
+              );
+              Alert.alert("Success", `User has been ${actionLabel}ed.`);
+            } catch (err: any) {
+              Alert.alert(
+                "Error",
+                typeof err === "string" ? err : `Failed to ${actionLabel} user.`
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMemberPress = (member: Member) => {
+    if (member.suspended) {
+      Alert.alert("Access Denied", "You cannot message a suspended member.");
+      return;
+    }
+    const receiverId = member.userId || member._id;
+    const receiverName = `${member.firstName || ""} ${
+      member.lastName || ""
+    }`.trim();
+
     router.push({
       pathname: "/(routers)/messages/chat",
       params: {
-        uuid: member?.uuid,
-        senderId: user._id,
-        senderName: `${user.firstName} ${user.lastName}`,
-        receiverId: member._id,
-        receiverName: `${member.firstName} ${member.lastName}`,
+        uuid: member.uuid || "",
+        senderId: user?._id,
+        receiverId,
+        receiverName,
         receiverProfilePicture: member.profilePicture || "",
       },
     });
   };
-
-  const getInitials = (first?: string, last?: string) =>
-    `${first?.[0] ?? ""}${last?.[0] ?? ""}`.toUpperCase() || "??";
 
   const handleRoleChange = (memberId: string, newRole: Role) => {
     setMembers((prev) =>
@@ -164,25 +248,12 @@ const FamilyMembersPage = () => {
     );
   };
 
-  const handleRightToggle = (
-    memberId: string,
-    key: (typeof ALL_RIGHTS_KEYS)[number]
-  ) => {
-    setMembers((prev) =>
-      prev.map((m) =>
-        m._id === memberId
-          ? { ...m, rights: { ...m.rights, [key]: !m.rights[key] } }
-          : m
-      )
-    );
-  };
-
   const saveAllChanges = useCallback(async () => {
     if (!familyId) return;
     setSaving(true);
     try {
       const updates = members
-        .filter((m) => user?._id !== m.userId)
+        .filter((m) => user?._id !== m.userId && user?._id !== m._id)
         .map((member) =>
           dispatch(
             updateFamilyMember({
@@ -195,7 +266,6 @@ const FamilyMembersPage = () => {
           ).unwrap()
         );
       await Promise.all(updates);
-      await fetchFamilyMembers();
       setEditMode(false);
       Alert.alert("Success", "All changes have been saved.");
     } catch (err) {
@@ -203,7 +273,7 @@ const FamilyMembersPage = () => {
     } finally {
       setSaving(false);
     }
-  }, [members, familyId, user?._id, dispatch, fetchFamilyMembers]);
+  }, [members, familyId, user?._id, dispatch]);
 
   if (loading && !refreshing) {
     return (
@@ -268,17 +338,22 @@ const FamilyMembersPage = () => {
           />
         }
       >
+        {error && members.length === 0 && (
+          <AppText style={styles.errorText}>{error}</AppText>
+        )}
+
         {members.map((member) => {
-          const isMe = user?._id === member.userId;
+          const isMe = user?._id === member.userId || user?._id === member._id;
           const canEditThis = editMode && !isMe && canEdit;
-          const displayedRights = canEditThis
-            ? ALL_RIGHTS_KEYS
-            : ALL_RIGHTS_KEYS.filter((key) => member.rights[key] === true);
 
           return (
             <View
               key={member._id}
-              style={[styles.memberCard, isMe && styles.myCard]}
+              style={[
+                styles.memberCard,
+                isMe && styles.myCard,
+                member.suspended && styles.suspendedCard,
+              ]}
             >
               <View style={styles.cardTop}>
                 <View style={styles.avatar}>
@@ -289,26 +364,53 @@ const FamilyMembersPage = () => {
                     />
                   ) : (
                     <AppText type="bold" style={styles.initials}>
-                      {getInitials(member.firstName, member.lastName)}
+                      {member.firstName?.[0]}
+                      {member.lastName?.[0]}
                     </AppText>
                   )}
                 </View>
                 <View style={styles.info}>
-                  <AppText type="bold" style={styles.name}>
-                    {member.firstName} {member.lastName}
-                    {isMe && " (You)"}
-                  </AppText>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <AppText
+                      type="bold"
+                      style={[
+                        styles.name,
+                        member.suspended && styles.suspendedText,
+                      ]}
+                    >
+                      {member.firstName} {member.lastName} {isMe && "(You)"}
+                    </AppText>
+                    {member.suspended && (
+                      <View style={styles.suspendedBadge}>
+                        <AppText style={styles.suspendedBadgeText}>
+                          Suspended
+                        </AppText>
+                      </View>
+                    )}
+                  </View>
                   <AppText style={styles.email}>{member.email}</AppText>
-                  {!editMode && (
-                    <View style={styles.roleTag}>
-                      <Lock
-                        size={10}
-                        color="#EAB308"
-                        style={{ marginRight: 4 }}
-                      />
-                      <AppText style={styles.roleText}>{member.role}</AppText>
+
+                  {member.isOnline && !member.suspended && (
+                    <View style={styles.onlineContainer}>
+                      <View style={styles.onlineDot} />
+                      <AppText style={styles.onlineText}>Online</AppText>
                     </View>
                   )}
+
+                  <View style={styles.roleTag}>
+                    <Lock
+                      size={10}
+                      color="#EAB308"
+                      style={{ marginRight: 4 }}
+                    />
+                    <AppText style={styles.roleText}>{member.role}</AppText>
+                  </View>
                 </View>
               </View>
 
@@ -336,54 +438,34 @@ const FamilyMembersPage = () => {
                       </TouchableOpacity>
                     ))}
                   </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.suspendBtn,
+                      member.suspended ? styles.unsuspendBtn : {},
+                    ]}
+                    onPress={() => handleToggleSuspension(member)}
+                  >
+                    {member.suspended ? (
+                      <>
+                        <UserCheck size={18} color="#059669" />
+                        <AppText style={styles.unsuspendBtnText}>
+                          Unsuspend Member
+                        </AppText>
+                      </>
+                    ) : (
+                      <>
+                        <UserX size={18} color="#DC2626" />
+                        <AppText style={styles.suspendBtnText}>
+                          Suspend Member
+                        </AppText>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </View>
               )}
 
-              {/* <View style={styles.section}>
-                <AppText style={styles.sectionLabel}>
-                  {canEditThis ? "Manage Permissions" : "Permissions"}
-                </AppText>
-                <View style={styles.rightsColumn}>
-                  {displayedRights.length > 0 ? (
-                    displayedRights.map((key) => (
-                      <View
-                        key={key}
-                        style={[
-                          styles.rightRow,
-                          !canEditThis && styles.viewOnlyRow,
-                        ]}
-                      >
-                        <AppText style={styles.rightLabel}>
-                          {key
-                            .replace(/([A-Z])/g, " $1")
-                            .replace(/^can/, "")
-                            .trim()}
-                        </AppText>
-                        {canEditThis ? (
-                          <Switch
-                            value={member.rights[key]}
-                            onValueChange={() =>
-                              handleRightToggle(member._id, key)
-                            }
-                            trackColor={{ false: "#CBD5E1", true: "#FEF08A" }}
-                            thumbColor={
-                              member.rights[key] ? "#EAB308" : "#F8FAFC"
-                            }
-                          />
-                        ) : (
-                          <CheckCircle2 size={16} color="#10B981" />
-                        )}
-                      </View>
-                    ))
-                  ) : (
-                    <AppText style={styles.noRights}>
-                      No special permissions
-                    </AppText>
-                  )}
-                </View>
-              </View> */}
-
-              {!isMe && (
+              {!isMe && !member.suspended && !editMode && (
                 <View style={styles.actionRow}>
                   <TouchableOpacity
                     style={styles.chatBtn}
@@ -394,18 +476,13 @@ const FamilyMembersPage = () => {
                       Send Message
                     </AppText>
                   </TouchableOpacity>
-
                   <TouchableOpacity style={styles.callBtn} disabled={true}>
-                    <View style={styles.callContent}>
-                      <Phone size={18} color="#94A3B8" />
-                      <AppText type="bold" style={styles.callBtnText}>
-                        Call User
-                      </AppText>
-                    </View>
+                    <Phone size={18} color="#94A3B8" />
+                    <AppText type="bold" style={styles.callBtnText}>
+                      Call User
+                    </AppText>
                     <View style={styles.comingSoonBadge}>
-                      <AppText style={styles.comingSoonText}>
-                        Coming Soon
-                      </AppText>
+                      <AppText style={styles.comingSoonText}>Soon</AppText>
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -463,6 +540,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
+  suspendedCard: { backgroundColor: "#F8FAFC", opacity: 0.7 },
   myCard: { borderLeftWidth: 5, borderLeftColor: "#EAB308" },
   cardTop: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
   avatar: {
@@ -478,6 +556,20 @@ const styles = StyleSheet.create({
   initials: { color: "#64748B", fontSize: 16 },
   info: { flex: 1, marginLeft: 12 },
   name: { fontSize: 16, color: "#111827" },
+  suspendedText: { color: "#94A3B8", textDecorationLine: "line-through" },
+  suspendedBadge: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  suspendedBadgeText: {
+    color: "#EF4444",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
   email: { fontSize: 12, color: "#64748B" },
   roleTag: {
     flexDirection: "row",
@@ -508,6 +600,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontWeight: "700",
   },
+  onlineContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  onlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22C55E",
+  },
+  onlineText: { color: "#22C55E", fontSize: 12, fontWeight: "500" },
   grid: { flexDirection: "row", gap: 8 },
   roleBtn: {
     flex: 1,
@@ -520,28 +625,22 @@ const styles = StyleSheet.create({
   roleBtnActive: { backgroundColor: "#EAB308", borderColor: "#EAB308" },
   roleBtnText: { fontSize: 12, color: "#64748B", fontWeight: "600" },
   roleBtnTextActive: { color: "#FFF" },
-  rightsColumn: { gap: 6 },
-  rightRow: {
+  suspendBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    marginTop: 12,
     padding: 12,
     borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
+    gap: 8,
   },
-  viewOnlyRow: {
-    backgroundColor: "#FFF",
-    borderLeftWidth: 3,
-    borderLeftColor: "#10B981",
-  },
-  rightLabel: { fontSize: 13, color: "#334155", textTransform: "capitalize" },
-  noRights: {
-    fontSize: 12,
-    color: "#94A3B8",
-    textAlign: "center",
-    paddingVertical: 5,
-  },
-  actionRow: { marginTop: 20, gap: 10 },
+  suspendBtnText: { color: "#DC2626", fontWeight: "bold", fontSize: 13 },
+  unsuspendBtn: { backgroundColor: "#ECFDF5", borderColor: "#D1FAE5" },
+  unsuspendBtnText: { color: "#059669", fontWeight: "bold", fontSize: 13 },
+  actionRow: { marginTop: 10, gap: 10 },
   chatBtn: {
     flexDirection: "row",
     backgroundColor: "#FEFCE8",
@@ -562,10 +661,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#F1F5F9",
-    opacity: 0.8,
   },
-  callContent: { flexDirection: "row", alignItems: "center" },
-  callBtnText: { color: "#94A3B8", marginLeft: 8, fontSize: 14 },
+  callBtnText: { color: "#94A3B8", marginLeft: 8, fontSize: 14, flex: 1 },
   comingSoonBadge: {
     backgroundColor: "#F1F5F9",
     paddingHorizontal: 8,
@@ -573,6 +670,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   comingSoonText: { fontSize: 10, color: "#64748B", fontWeight: "bold" },
+  errorText: { textAlign: "center", color: "#EF4444", marginTop: 20 },
 });
 
 export default FamilyMembersPage;

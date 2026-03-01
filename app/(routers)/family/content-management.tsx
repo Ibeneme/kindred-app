@@ -195,6 +195,7 @@ const ContentManagementPage = () => {
     (state: RootState) => state.familyContent
   );
 
+  console.warn(contents, "contentscontents");
   const [modalVisible, setModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState(false);
@@ -226,9 +227,17 @@ const ContentManagementPage = () => {
 
   useEffect(() => {
     if (familyId && contentType) {
-      dispatch(fetchFamilyContent({ familyId, type: contentType }));
+      dispatch(fetchFamilyContent({ familyId, type: contentType }))
+        .unwrap()
+        .then((response) => {
+          console.log("✅ Family Content Response:", response);
+        })
+        .catch((error) => {
+          console.log("❌ Error fetching family content:", error);
+        });
     }
   }, [familyId, contentType, dispatch]);
+  
 
   useEffect(() => {
     if (selectedItem) {

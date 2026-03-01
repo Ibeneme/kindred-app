@@ -22,6 +22,7 @@ import {
   Building2,
   Church,
   ArrowRight,
+  BoxIcon,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useDispatch } from "react-redux";
@@ -46,6 +47,7 @@ const CreateFamilyPage = () => {
     { id: "4", title: "Alumni Group", icon: <GraduationCap size={20} /> },
     { id: "5", title: "Community", icon: <Building2 size={20} /> },
     { id: "6", title: "Religious Group", icon: <Church size={20} /> },
+    { id: "7", title: "Others", icon: <BoxIcon size={20} /> },
   ];
 
   const handleCreateFamily = async () => {

@@ -13,6 +13,7 @@ import userSlice from "../slices/userSlice";
 import donationSlice from "../slices/donationSlice";
 import familyContentSlice from '../slices/familyContentSlice'
 import familyMemberSlice from "../slices/familyMemberSlice";
+import safetyNet from "../slices/safetyNet";
 
 export const store = configureStore({
     reducer: {
@@ -28,7 +29,8 @@ export const store = configureStore({
         user: userSlice,
         donations: donationSlice,
         familyContent: familyContentSlice,
-        familyMembers: familyMemberSlice
+        familyMembers: familyMemberSlice,
+        safetyNet: safetyNet
     },
 });
 

@@ -188,7 +188,7 @@ const TabIcon = ({
 const styles = StyleSheet.create({
   tabBar: {
     position: "absolute",
-    height: Platform.OS === "ios" ? 88 : 68,
+    height: Platform.OS === "ios" ? 88 : 78,
     paddingTop: 10,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 0,

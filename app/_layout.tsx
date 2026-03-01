@@ -16,7 +16,7 @@ import { SpinnerProvider } from "@/src/contexts/SpinnerProvider";
 import { SocketProvider } from "@/src/contexts/SocketProvider";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-// Prevent splash screen from auto-hiding
+
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
@@ -51,10 +51,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <SocketProvider>
-        <SpinnerProvider>
-          <Provider store={store}>
-            {/* Wrap the Stack in a View to apply global background colors */}
+      <Provider store={store}>
+        <SocketProvider>
+          <SpinnerProvider>
             <View
               style={[
                 styles.contentContainer,
@@ -75,9 +74,9 @@ export default function RootLayout() {
               backgroundColor={theme.background}
               translucent={true}
             />
-          </Provider>
-        </SpinnerProvider>
-      </SocketProvider>
+          </SpinnerProvider>
+        </SocketProvider>
+      </Provider>
     </SafeAreaProvider>
   );
 }

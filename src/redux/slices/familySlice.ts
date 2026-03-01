@@ -7,6 +7,7 @@ export interface FamilyMember {
     firstName: string;
     lastName: string;
     email: string;
+    isOnline?: any
 }
 
 export interface Family {
@@ -25,7 +26,9 @@ export interface Family {
     isInviteSent?: boolean;
     isJoinRequestSent?: boolean;
     invitationCode?: any;
-    unreadSummary?: any
+    unreadSummary?: any;
+    isOnline?: any;
+    suspendedMembers?: string[];
 }
 
 export interface InviteFamilyResponse {
@@ -58,6 +61,40 @@ export const createFamily = createAsyncThunk("family/create", async (data: any, 
     try { const res = await axiosInstance.post("/families", data); return res.data.family; }
     catch (err: any) { return rejectWithValue(err.response?.data?.message); }
 });
+
+// 1️⃣ Async Thunks
+export const suspendFamilyMember = createAsyncThunk<
+    { familyId: string; userId: string; suspendedMembers: string[] },
+    { familyId: string; userId: string },
+    { rejectValue: string }
+>(
+    "family/suspendMember",
+    async ({ familyId, userId }, { rejectWithValue }) => {
+        try {
+            const res = await axiosInstance.post(`/families/${familyId}/suspend/${userId}`);
+            return { familyId, userId, suspendedMembers: res.data.suspendedMembers };
+        } catch (err: any) {
+            return rejectWithValue(err.response?.data?.message || "Failed to suspend user");
+        }
+    }
+);
+
+export const unsuspendFamilyMember = createAsyncThunk<
+    { familyId: string; userId: string; suspendedMembers: string[] },
+    { familyId: string; userId: string },
+    { rejectValue: string }
+>(
+    "family/unsuspendMember",
+    async ({ familyId, userId }, { rejectWithValue }) => {
+        try {
+            const res = await axiosInstance.post(`/families/${familyId}/unsuspend/${userId}`);
+            return { familyId, userId, suspendedMembers: res.data.suspendedMembers };
+        } catch (err: any) {
+            return rejectWithValue(err.response?.data?.message || "Failed to unsuspend user");
+        }
+    }
+);
+
 
 export const getFamilies = createAsyncThunk("family/getAll", async (_, { rejectWithValue }) => {
     try { const res = await axiosInstance.get("/families"); return res.data; }
@@ -221,8 +258,27 @@ const familySlice = createSlice({
                 state.loading = false;
                 state.joinRequests = state.joinRequests.filter(r => r._id !== action.payload);
             })
-       
-            // --- 2. ALL addMatcher CALLS MUST BE AT THE END ---
+
+
+            // --- SUSPEND MEMBER ---
+            .addCase(suspendFamilyMember.fulfilled, (state, action: PayloadAction<{ familyId: string; userId: string; suspendedMembers: string[] }>) => {
+                state.loading = false;
+                if (state.selectedFamily?._id === action.payload.familyId) {
+                    state.selectedFamily.suspendedMembers = action.payload.suspendedMembers;
+                }
+                const idx = state.families.findIndex(f => f._id === action.payload.familyId);
+                if (idx !== -1) state.families[idx].suspendedMembers = action.payload.suspendedMembers;
+            })
+
+            .addCase(unsuspendFamilyMember.fulfilled, (state, action: PayloadAction<{ familyId: string; userId: string; suspendedMembers: string[] }>) => {
+                state.loading = false;
+                if (state.selectedFamily?._id === action.payload.familyId) {
+                    state.selectedFamily.suspendedMembers = action.payload.suspendedMembers;
+                }
+                const idx = state.families.findIndex(f => f._id === action.payload.familyId);
+                if (idx !== -1) state.families[idx].suspendedMembers = action.payload.suspendedMembers;
+            })
+
             .addMatcher(
                 (action) => action.type.endsWith("/pending"),
                 (state) => {

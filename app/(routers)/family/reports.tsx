@@ -87,6 +87,11 @@ const ReportsPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Expanded State for "Read More"
+  const [expandedReports, setExpandedReports] = useState<Set<string>>(
+    new Set()
+  );
+
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -118,13 +123,21 @@ const ReportsPage = () => {
     });
   }, [familyId, dispatch]);
 
-  // Sync active report if reports list updates (for live comment updates)
   useEffect(() => {
     if (activeReport) {
       const updated = reports.find((r) => r._id === activeReport._id);
       if (updated) setActiveReport(updated);
     }
   }, [reports]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedReports((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filteredReports = reports.filter((report: any) => {
     const isSender = report.sender?._id === currentUserId;
@@ -279,7 +292,7 @@ const ReportsPage = () => {
 
       {/* TABS */}
       <View style={styles.tabWrapper}>
-        <View style={styles.tabBackground}>
+        <View style={styles.tabBackground as any}>
           {["sent", "received"].map((t: any) => (
             <TouchableOpacity
               key={t}
@@ -304,6 +317,9 @@ const ReportsPage = () => {
         keyExtractor={(item) => item._id}
         renderItem={({ item }) => {
           const visuals = getStatusVisuals(item.status);
+          const isExpanded = expandedReports.has(item._id);
+          const needsReadMore = item.workDone && item.workDone.length > 100;
+
           return (
             <View style={styles.card}>
               <View
@@ -332,9 +348,27 @@ const ReportsPage = () => {
                     </AppText>
                   </View>
                 </View>
-                <AppText numberOfLines={2} style={styles.reportPreview}>
-                  {item.workDone}
-                </AppText>
+
+                {/* WORK DONE SECTION WITH READ MORE */}
+                <View style={styles.contentSection}>
+                  <AppText
+                    style={styles.reportPreview}
+                    numberOfLines={isExpanded ? undefined : 3}
+                  >
+                    {item.workDone}
+                  </AppText>
+                  {needsReadMore && (
+                    <TouchableOpacity
+                      onPress={() => toggleExpand(item._id)}
+                      style={styles.readMoreBtn}
+                    >
+                      <AppText type="bold" style={styles.readMoreText}>
+                        {isExpanded ? "Show Less" : "Read More..."}
+                      </AppText>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <View style={styles.progressRow}>
                   <View style={styles.progressTrack}>
                     <View
@@ -655,7 +689,7 @@ const ReportsPage = () => {
             <AppText type="bold" style={styles.confirmTitle}>
               Delete Report?
             </AppText>
-            <View style={styles.confirmButtons}>
+            <View style={styles.confirmButtons as any}>
               <TouchableOpacity
                 style={styles.cancelAction}
                 onPress={() => setDeleteModalVisible(false)}
@@ -736,7 +770,10 @@ const styles = StyleSheet.create({
   dateLabel: { fontSize: 12, color: "#9CA3AF" },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusPillText: { fontSize: 11, fontWeight: "800" },
-  reportPreview: { fontSize: 14, color: "#4B5563", marginBottom: 15 },
+  contentSection: { marginBottom: 15 },
+  reportPreview: { fontSize: 14, color: "#4B5563", lineHeight: 20 },
+  readMoreBtn: { marginTop: 4 },
+  readMoreText: { fontSize: 12, color: "#F59E0B" },
   progressRow: {
     flexDirection: "row",
     alignItems: "center",

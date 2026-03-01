@@ -11,13 +11,25 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useDispatch } from "react-redux";
-import { ArrowLeft, Plus, X, Calendar, Check } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Plus,
+  X,
+  Calendar,
+  Check,
+  Clock,
+} from "lucide-react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AppText } from "@/src/ui/AppText";
 import { AppDispatch } from "@/src/redux/store";
 import { createPoll } from "@/src/redux/slices/pollSlice";
+
+const BRAND_YELLOW = "#EAB308";
+const DARK = "#111827";
+const GRAY = "#6B7280";
+const BORDER = "#E5E7EB";
 
 const CreatePollPage = () => {
   const router = useRouter();
@@ -25,20 +37,34 @@ const CreatePollPage = () => {
   const { familyId } = useLocalSearchParams<{ familyId: string }>();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // FIXED: showSlider replaces the old pop-up state
+  const [showSlider, setShowSlider] = useState(false);
+  const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
 
   const [form, setForm] = useState({
     title: "",
     description: "",
-    options: ["", ""], // Minimum 2 options
-    endDate: new Date(Date.now() + 86400000), // Default to 24 hours from now
+    options: ["", ""],
+    endDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000),
   });
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    // Android requires specific handling for the rolling view
+    if (Platform.OS === "android" && event.type === "set") {
+      setShowSlider(false);
+    }
+
+    if (selectedDate) {
+      setForm({ ...form, endDate: selectedDate });
+    }
+  };
 
   const addOption = () => {
     if (form.options.length < 6) {
       setForm({ ...form, options: [...form.options, ""] });
     } else {
-      Alert.alert("Limit Reached", "You can only have up to 6 options.");
+      Alert.alert("Limit Reached", "Max 6 options.");
     }
   };
 
@@ -51,41 +77,43 @@ const CreatePollPage = () => {
 
   const handlePublish = async () => {
     const validOptions = form.options.filter((opt) => opt.trim() !== "");
+    const now = new Date();
 
-    if (!form.title.trim()) {
-      return Alert.alert("Required", "Please enter a poll question.");
-    }
-    if (validOptions.length < 2) {
-      return Alert.alert("Required", "Please provide at least 2 options.");
-    }
-    if (form.endDate <= new Date()) {
+    if (!form.title.trim())
+      return Alert.alert("Required", "Please enter a question.");
+    if (validOptions.length < 2)
+      return Alert.alert("Required", "Minimum 2 options.");
+
+    // Future Check (1-minute buffer)
+    if (form.endDate.getTime() <= now.getTime() + 60000) {
       return Alert.alert("Invalid Date", "The deadline must be in the future.");
     }
 
     setIsSubmitting(true);
-    const action = await dispatch(
-      createPoll({
-        ...form,
-        options: validOptions,
-        familyId,
-        endDate: form.endDate.toISOString(),
-      })
-    );
-    setIsSubmitting(false);
-
-    if (createPoll.fulfilled.match(action)) {
-      router.back();
-    } else {
-      Alert.alert("Error", "Failed to launch poll. Please try again.");
+    try {
+      const action = await dispatch(
+        createPoll({
+          ...form,
+          options: validOptions,
+          familyId,
+          endDate: form.endDate.toISOString(),
+        })
+      );
+      if (createPoll.fulfilled.match(action)) {
+        router.back();
+      } else {
+        Alert.alert("Error", "Failed to launch poll.");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-          <ArrowLeft size={26} color="#111827" />
+          <ArrowLeft size={26} color={DARK} />
         </TouchableOpacity>
         <AppText type="bold" style={styles.headerTitle}>
           New Family Poll
@@ -96,9 +124,9 @@ const CreatePollPage = () => {
           style={styles.iconBtn}
         >
           {isSubmitting ? (
-            <ActivityIndicator color="#EAB308" />
+            <ActivityIndicator color={BRAND_YELLOW} />
           ) : (
-            <Check size={28} color="#EAB308" />
+            <Check size={28} color={BRAND_YELLOW} />
           )}
         </TouchableOpacity>
       </View>
@@ -114,26 +142,16 @@ const CreatePollPage = () => {
           <AppText style={styles.label}>Poll Question *</AppText>
           <TextInput
             style={styles.input}
-            placeholder="What is the family deciding on?"
+            placeholder="e.g. Where should we go for Christmas?"
             value={form.title}
             onChangeText={(t) => setForm({ ...form, title: t })}
-            multiline
-          />
-
-          <AppText style={styles.label}>Additional Details (Optional)</AppText>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Add some context or instructions..."
-            value={form.description}
-            onChangeText={(t) => setForm({ ...form, description: t })}
-            multiline
           />
 
           <View style={styles.sectionHeader}>
             <AppText style={styles.label}>Options *</AppText>
             {form.options.length < 6 && (
               <TouchableOpacity onPress={addOption} style={styles.addBtn}>
-                <Plus size={16} color="#EAB308" />
+                <Plus size={16} color={BRAND_YELLOW} />
                 <AppText style={styles.addText}>Add Option</AppText>
               </TouchableOpacity>
             )}
@@ -163,29 +181,58 @@ const CreatePollPage = () => {
           ))}
 
           <AppText style={styles.label}>Voting Deadline *</AppText>
-          <TouchableOpacity
-            style={styles.datePicker}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Calendar size={20} color="#6B7280" />
-            <AppText style={styles.dateValue}>
-              {form.endDate.toLocaleString("en-GB", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </AppText>
-          </TouchableOpacity>
-
-          {showDatePicker && (
-            <DateTimePicker
-              value={form.endDate}
-              mode="datetime"
-              minimumDate={new Date()}
-              onChange={(e, date) => {
-                setShowDatePicker(false);
-                if (date) setForm({ ...form, endDate: date });
+          <View style={styles.dateTimeRow}>
+            <TouchableOpacity
+              style={[styles.dateBtn, { flex: 1, marginRight: 8 }]}
+              onPress={() => {
+                setPickerMode("date");
+                setShowSlider(!showSlider);
               }}
-            />
+            >
+              <Calendar size={18} color={BRAND_YELLOW} />
+              <AppText style={styles.dateValue}>
+                {form.endDate.toLocaleDateString()}
+              </AppText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dateBtn, { flex: 1 }]}
+              onPress={() => {
+                setPickerMode("time");
+                setShowSlider(!showSlider);
+              }}
+            >
+              <Clock size={18} color={BRAND_YELLOW} />
+              <AppText style={styles.dateValue}>
+                {form.endDate.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </AppText>
+            </TouchableOpacity>
+          </View>
+
+          {showSlider && (
+            <View style={styles.sliderWrapper}>
+              <DateTimePicker
+                value={form.endDate}
+                mode={pickerMode}
+                minimumDate={new Date()}
+                display="spinner" // This creates the rolling vertical slider
+                onChange={onDateChange}
+                textColor={DARK}
+              />
+              {Platform.OS === "ios" && (
+                <TouchableOpacity
+                  style={styles.doneBtn}
+                  onPress={() => setShowSlider(false)}
+                >
+                  <AppText type="bold" style={{ color: BRAND_YELLOW }}>
+                    Confirm {pickerMode}
+                  </AppText>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
 
           <TouchableOpacity
@@ -201,11 +248,6 @@ const CreatePollPage = () => {
               </AppText>
             )}
           </TouchableOpacity>
-
-          <AppText style={styles.disclaimer}>
-            Only family admins and moderators can launch polls. Once launched,
-            the deadline cannot be changed.
-          </AppText>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -218,32 +260,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 15,
-    paddingVertical: 15,
+    padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  headerTitle: { fontSize: 18, color: "#111827" },
+  headerTitle: { fontSize: 18, color: DARK },
   iconBtn: { padding: 5 },
   scrollContent: { padding: 20, paddingBottom: 50 },
   label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
+    fontSize: 11,
+    fontWeight: "800",
+    color: GRAY,
     marginBottom: 8,
-    marginTop: 15,
+    marginTop: 24,
+    letterSpacing: 1,
   },
   input: {
     backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderWidth: 1.5,
+    borderColor: BORDER,
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    color: "#111827",
+    color: DARK,
     marginBottom: 10,
   },
-  textArea: { minHeight: 80, textAlignVertical: "top" },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -252,7 +293,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-  addText: { color: "#EAB308", fontWeight: "bold", fontSize: 14 },
+  addText: { color: BRAND_YELLOW, fontWeight: "bold", fontSize: 14 },
   optionWrapper: {
     flexDirection: "row",
     alignItems: "center",
@@ -260,19 +301,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   removeBtn: { padding: 5 },
-  datePicker: {
+  dateTimeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 5,
+  },
+  dateBtn: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F9FAFB",
     padding: 14,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginTop: 5,
+    borderWidth: 1.5,
+    borderColor: BORDER,
   },
-  dateValue: { marginLeft: 10, color: "#111827", fontSize: 15 },
+  dateValue: { marginLeft: 10, color: DARK, fontSize: 15, fontWeight: "600" },
+  sliderWrapper: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    marginTop: 10,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: BORDER,
+  },
+  doneBtn: {
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#FFF",
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
   publishBtn: {
-    backgroundColor: "#111827",
+    backgroundColor: DARK,
     padding: 18,
     borderRadius: 16,
     alignItems: "center",
@@ -280,14 +340,6 @@ const styles = StyleSheet.create({
   },
   disabledBtn: { opacity: 0.7 },
   publishBtnText: { color: "#FFF", fontSize: 16 },
-  disclaimer: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    textAlign: "center",
-    marginTop: 20,
-    lineHeight: 18,
-    paddingHorizontal: 20,
-  },
 });
 
 export default CreatePollPage;
