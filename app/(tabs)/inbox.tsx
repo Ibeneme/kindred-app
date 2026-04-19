@@ -15,15 +15,20 @@ import { useSocket } from "@/src/contexts/SocketProvider";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText } from "@/src/ui/AppText";
-import { User as UserIcon, Search, Filter } from "lucide-react-native";
+import {
+  User as UserIcon,
+  Search,
+  ListFilter,
+  MessageSquarePlus,
+} from "lucide-react-native";
 
 export interface Conversation {
-  _id: string;
+  _id: string; // This is the roomUuid
   lastMessage: string;
   timestamp: string;
-  senderName: string;
-  senderId: string;
-  receiverId: string;
+  senderName: string; // Now correctly represents the 'Other Person'
+  senderId: string; // Now correctly represents the 'Other Person'
+  receiverId: string; // Usually the current user
   unreadCount: number;
   profilePicture?: string;
 }
@@ -40,7 +45,7 @@ const InboxScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showFilter, setShowFilter] = useState(false);
+  const [isFilterActive, setIsFilterActive] = useState(false);
 
   const fetchConversations = useCallback(() => {
     if (socket && user?._id) {
@@ -54,11 +59,6 @@ const InboxScreen = () => {
     }, [fetchConversations])
   );
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchConversations();
-  }, [fetchConversations]);
-
   useEffect(() => {
     if (!socket || !user?._id) return;
 
@@ -69,34 +69,38 @@ const InboxScreen = () => {
       setRefreshing(false);
     });
 
+    // Handle incoming messages while the inbox is open
     const handleLatestMsg = (updatedConv: any) => {
       setConversations((prev) => {
-        const existingIndex = prev.findIndex((c) => c._id === updatedConv._id);
+        const existingIndex = prev.findIndex(
+          (c) => c._id === updatedConv.roomUuid
+        );
         const updatedList = [...prev];
 
+        // Determine the 'Other Person' details for the UI
+        const isMeSender = updatedConv.senderId === user._id;
+        const chatPartnerName = isMeSender
+          ? "Family Member"
+          : updatedConv.senderName;
+        const chatPartnerId = isMeSender
+          ? updatedConv.receiverId
+          : updatedConv.senderId;
+
+        const formattedConv: Conversation = {
+          _id: updatedConv.roomUuid,
+          lastMessage: updatedConv.lastMessage || updatedConv.message,
+          timestamp: updatedConv.timestamp,
+          senderName: chatPartnerName,
+          senderId: chatPartnerId,
+          receiverId: user._id,
+          unreadCount: isMeSender ? 0 : updatedConv.unreadCount || 1,
+          profilePicture: updatedConv.profilePicture,
+        };
+
         if (existingIndex !== -1) {
-          const existingItem = updatedList[existingIndex];
-          const isMe = updatedConv.senderId === user._id;
-
-          const mergedItem = {
-            ...existingItem,
-            lastMessage: updatedConv.lastMessage,
-            timestamp: updatedConv.timestamp,
-            profilePicture:
-              updatedConv.profilePicture || existingItem.profilePicture,
-            unreadCount: isMe
-              ? existingItem.unreadCount
-              : (existingItem.unreadCount || 0) + 1,
-          };
-
           updatedList.splice(existingIndex, 1);
-          updatedList.unshift(mergedItem);
-        } else {
-          updatedList.unshift({
-            ...updatedConv,
-            unreadCount: updatedConv.senderId === user._id ? 0 : 1,
-          });
         }
+        updatedList.unshift(formattedConv);
         return updatedList;
       });
     };
@@ -109,45 +113,30 @@ const InboxScreen = () => {
     };
   }, [socket, user?._id]);
 
-  // Search and filter logic
   useEffect(() => {
     let filtered = conversations;
-
     if (searchQuery.trim()) {
-      const lowerQuery = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        (conv) =>
-          conv.senderName.toLowerCase().includes(lowerQuery) ||
-          conv.lastMessage.toLowerCase().includes(lowerQuery)
+        (c) =>
+          c.senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
-
-    setFilteredConversations(filtered);
-  }, [searchQuery, conversations]);
-
-  const toggleFilter = () => {
-    setShowFilter(!showFilter);
-    // Add your filter logic here (e.g., unread only, recent, etc.)
-    if (!showFilter) {
-      // Example filter: show unread only
-      const unreadOnly = conversations.filter((c) => c.unreadCount > 0);
-      setFilteredConversations(unreadOnly);
-    } else {
-      setFilteredConversations(conversations);
+    if (isFilterActive) {
+      filtered = filtered.filter((c) => c.unreadCount > 0);
     }
-  };
+    setFilteredConversations(filtered);
+  }, [searchQuery, conversations, isFilterActive]);
 
   const handleConversationPress = (item: Conversation) => {
-    const otherUserId =
-      item.senderId === user?._id ? item.receiverId : item.senderId;
-
+    // Navigation logic: item.senderId is now guaranteed to be the other person by the backend logic
     router.push({
       pathname: "/(routers)/messages/chat",
       params: {
         uuid: item._id,
         senderId: user?._id,
         senderName: `${user?.firstName} ${user?.lastName}`,
-        receiverId: otherUserId,
+        receiverId: item.senderId, // The other person
         receiverName: item.senderName,
         receiverProfilePicture: item.profilePicture || "",
       },
@@ -159,47 +148,50 @@ const InboxScreen = () => {
       hour: "2-digit",
       minute: "2-digit",
     });
+    const isUnread = item.unreadCount > 0;
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        activeOpacity={0.6}
+        style={styles.convCard}
         onPress={() => handleConversationPress(item)}
       >
-        <View style={styles.avatar}>
+        <View style={styles.avatarContainer}>
           {item.profilePicture ? (
             <Image
               source={{ uri: item.profilePicture }}
-              style={styles.avatarImage}
+              style={styles.avatarImg}
             />
           ) : (
-            <View style={styles.placeholderIcon}>
-              <UserIcon size={28} color="#94A3B8" />
+            <View style={styles.avatarPlaceholder}>
+              <UserIcon size={24} color="#94A3B8" />
             </View>
           )}
+          {isUnread && <View style={styles.activeDot} />}
         </View>
 
-        <View style={styles.content}>
-          <View style={styles.row}>
-            <AppText type="bold" style={styles.name}>
+        <View style={styles.convContent}>
+          <View style={styles.convHeader}>
+            <AppText type="bold" style={styles.senderName}>
               {item.senderName}
             </AppText>
-            <AppText style={styles.time}>{time}</AppText>
+            <AppText style={[styles.timeText, isUnread && styles.unreadTime]}>
+              {time}
+            </AppText>
           </View>
 
-          <View style={styles.row}>
+          <View style={styles.msgPreviewRow}>
             <AppText
               numberOfLines={1}
-              style={[
-                styles.lastMsg,
-                item.unreadCount > 0 && styles.unreadText,
-              ]}
+              style={[styles.msgSnippet, isUnread && styles.msgSnippetUnread]}
             >
               {item.lastMessage}
             </AppText>
-
-            {item.unreadCount > 0 && (
-              <View style={styles.badge}>
-                <AppText style={styles.badgeText}>{item.unreadCount}</AppText>
+            {isUnread && (
+              <View style={styles.unreadBadge}>
+                <AppText style={styles.unreadBadgeText}>
+                  {item.unreadCount}
+                </AppText>
               </View>
             )}
           </View>
@@ -209,49 +201,75 @@ const InboxScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <AppText type="bold" style={styles.headerTitle}>
-          Messages
-        </AppText>
-        <View style={styles.headerIcons}>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Search size={22} color="#111827" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={toggleFilter}>
-            <Filter size={22} color="#111827" />
+    <SafeAreaView style={styles.mainContainer}>
+      <View style={styles.topHeader}>
+        <View>
+          <AppText type="bold" style={styles.pageTitle}>
+            Messages
+          </AppText>
+          <AppText style={styles.subTitle}>
+            {conversations.length} total chats
+          </AppText>
+        </View>
+        <TouchableOpacity style={styles.composeBtn}>
+          <MessageSquarePlus size={22} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchWrapper}>
+        <View style={styles.searchBar}>
+          <Search size={18} color="#64748B" />
+          <TextInput
+            placeholder="Search people or messages..."
+            placeholderTextColor="#94A3B8"
+            style={styles.searchField}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <TouchableOpacity
+            onPress={() => setIsFilterActive(!isFilterActive)}
+            style={[
+              styles.filterToggle,
+              isFilterActive && styles.filterToggleActive,
+            ]}
+          >
+            <ListFilter
+              size={18}
+              color={isFilterActive ? "#EAB308" : "#64748B"}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search conversations..."
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-      />
-
       {loading && !refreshing ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#111827" />
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color="#EAB308" />
         </View>
       ) : (
         <FlatList
           data={filteredConversations}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.scrollList}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#111827"]}
-              tintColor="#111827"
+              onRefresh={fetchConversations}
+              tintColor="#EAB308"
             />
           }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <AppText style={{ color: "#64748B" }}>No messages found.</AppText>
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <MessageSquarePlus size={32} color="#CBD5E1" />
+              </View>
+              <AppText type="bold" style={styles.emptyTitle}>
+                No conversations yet
+              </AppText>
+              <AppText style={styles.emptyText}>
+                When you start a chat, it will appear here.
+              </AppText>
             </View>
           }
         />
@@ -261,74 +279,126 @@ const InboxScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  header: {
+  mainContainer: { flex: 1, backgroundColor: "#F8FAFC" },
+  topHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    paddingHorizontal: 24,
+    paddingVertical: 15,
   },
-  headerTitle: { fontSize: 24, color: "#111827" },
-  headerIcons: { flexDirection: "row", gap: 8 },
-  iconBtn: { padding: 8, backgroundColor: "#F8FAFC", borderRadius: 12 },
-  searchInput: {
-    margin: 16,
-    padding: 12,
-    backgroundColor: "#F1F5F9",
-    borderRadius: 12,
-    fontSize: 16,
-    color: "#111827",
+  pageTitle: { fontSize: 28, color: "#0F172A", letterSpacing: -0.5 },
+  subTitle: { fontSize: 13, color: "#94A3B8", marginTop: 2 },
+  composeBtn: {
+    backgroundColor: "#0F172A",
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  list: { paddingVertical: 8, flexGrow: 1 },
-  card: {
+  searchWrapper: { paddingHorizontal: 20, marginBottom: 10 },
+  searchBar: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    paddingHorizontal: 15,
+    borderRadius: 15,
+    height: 50,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  searchField: { flex: 1, marginLeft: 10, fontSize: 15, color: "#1E293B" },
+  filterToggle: { padding: 6, borderRadius: 8 },
+  filterToggleActive: { backgroundColor: "#FEF9C3" },
+  scrollList: { paddingHorizontal: 16, paddingBottom: 40 },
+  convCard: {
+    flexDirection: "row",
+    padding: 14,
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    marginBottom: 10,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  avatarContainer: { position: "relative" },
+  avatarImg: {
+    width: 55,
+    height: 55,
+    borderRadius: 18,
+    backgroundColor: "#E2E8F0",
+  },
+  avatarPlaceholder: {
+    width: 55,
+    height: 55,
+    borderRadius: 18,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
     alignItems: "center",
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#F1F5F9",
-    overflow: "hidden",
+  activeDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#10B981",
+    borderWidth: 3,
+    borderColor: "#FFF",
   },
-  avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  placeholderIcon: { flex: 1, justifyContent: "center", alignItems: "center" },
-  content: { flex: 1, marginLeft: 12, justifyContent: "center" },
-  row: {
+  convContent: { flex: 1, marginLeft: 15 },
+  convHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  name: { fontSize: 16, color: "#111827" },
-  time: { fontSize: 12, color: "#94A3B8" },
-  lastMsg: {
-    fontSize: 14,
-    color: "#64748B",
-    marginTop: 2,
-    flex: 1,
-    marginRight: 8,
+  senderName: { fontSize: 16, color: "#1E293B" },
+  timeText: { fontSize: 12, color: "#94A3B8" },
+  unreadTime: { color: "#EAB308", fontWeight: "700" },
+  msgPreviewRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
   },
-  unreadText: { color: "#111827", fontWeight: "700" },
-  badge: {
-    backgroundColor: "#EF4444",
+  msgSnippet: { fontSize: 14, color: "#64748B", flex: 1, marginRight: 10 },
+  msgSnippetUnread: { color: "#0F172A", fontWeight: "600" },
+  unreadBadge: {
+    backgroundColor: "#EAB308",
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
-  badgeText: { color: "#FFF", fontSize: 10, fontWeight: "bold" },
-  center: {
+  unreadBadgeText: { color: "#FFF", fontSize: 11, fontWeight: "800" },
+  loadingState: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyState: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 100,
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#F1F5F9",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 50,
+    marginBottom: 15,
   },
+  emptyTitle: { fontSize: 18, color: "#334155" },
+  emptyText: { fontSize: 14, color: "#94A3B8", marginTop: 5 },
 });
 
 export default InboxScreen;

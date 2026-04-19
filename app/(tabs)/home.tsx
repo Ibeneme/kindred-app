@@ -9,6 +9,8 @@ import {
   RefreshControl,
   Animated,
   Alert,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -23,6 +25,11 @@ import {
   Sparkles,
   Hash,
   ArrowRight,
+  LayoutGrid,
+  List,
+  Crown,
+  ShieldCheck,
+  Fingerprint,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import {
@@ -31,79 +38,94 @@ import {
 } from "@/src/redux/slices/familySlice";
 import { fetchUserProfile } from "@/src/redux/slices/userSlice";
 import { AppDispatch, RootState } from "@/src/redux/store";
-import { useGlobalSpinner } from "@/src/hooks/useGlobalSpinner";
 import { fetchNotifications } from "@/src/redux/slices/notificationSlice";
 
+const { width } = Dimensions.get("window");
+const GRID_SPACING = 16;
+const COLUMN_WIDTH = (width - 48 - GRID_SPACING) / 2;
+
 const COLORS = {
+  primary: "#FFE66D",
   black: "#000000",
-  yellow: "#FFE66D",
-  primary: "#FF6B6B",
-  secondary: "#4ECDC4",
-  mint: "#95E1BF",
   background: "#FFFFFF",
   surface: "#F8FAFC",
-  text: "#1E293B",
-  textLight: "#64748B",
-  icon: "#64748B",
-  unreadRed: "#EF4444",
+  border: "#E2E8F0",
+  textGrey: "#64748B",
+  unread: "#EF4444",
 };
 
-const motivationalQuotes = [
-  "Unity is strength",
-  "Family is everything",
-  "Together we are stronger",
-  "In unity, we find strength",
+// 🎨 VIBRANT FAMILY PALETTE
+const FAMILY_COLORS = [
+  "#A855F7", // Purple
+  "#EC4899", // Pink
+  "#F97316", // Orange
+  "#3B82F6", // Blue
+  "#10B981", // Green
 ];
+
+const LoadingModal = ({ visible }: { visible: boolean }) => (
+  <Modal transparent visible={visible} animationType="fade">
+    <View style={styles.modalOverlay}>
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <AppText type="bold" style={styles.loaderText}>
+          SYNCING SANCTUARY...
+        </AppText>
+      </View>
+    </View>
+  </Modal>
+);
 
 const HomePage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
 
-  // Selectors for Redux state
-  const { families, loading: familyLoading } = useSelector(
-    (state: RootState) => state.family
-  );
-  const { user, loading: userLoading } = useSelector(
-    (state: RootState) => state.user
-  );
-  const { loading, unreadCount: globalNotificationsCount } = useSelector(
+  const { families } = useSelector((state: RootState) => state.family);
+  const { user } = useSelector((state: RootState) => state.user);
+  const { unreadCount: globalNotificationsCount } = useSelector(
     (state: RootState) => state.notifications
   );
 
-  useGlobalSpinner(loading || userLoading);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [localSearch, setLocalSearch] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [isSearchingCode, setIsSearchingCode] = useState(false);
   const [currentQuote, setCurrentQuote] = useState("");
+  const [isGridView, setIsGridView] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const getRandomQuote = useCallback(() => {
-    const randomIndex = Math.floor(Math.random() * motivationalQuotes.length);
-    setCurrentQuote(motivationalQuotes[randomIndex]);
-  }, []);
+  const syncData = async (showModal = true) => {
+    if (showModal) setIsSyncing(true);
+    try {
+      await Promise.all([
+        dispatch(getFamilies()),
+        dispatch(fetchUserProfile()),
+        dispatch(fetchNotifications()),
+      ]);
+    } finally {
+      setIsSyncing(false);
+      setIsRefreshing(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
-      dispatch(getFamilies());
-      dispatch(fetchUserProfile());
-      dispatch(fetchNotifications());
-      getRandomQuote();
-
+      syncData();
+      setCurrentQuote("Your heritage preservation starts here.");
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 800,
         useNativeDriver: true,
       }).start();
-    }, [dispatch, getRandomQuote])
+    }, [])
   );
 
-  const onRefresh = useCallback(() => {
-    dispatch(getFamilies());
-    dispatch(fetchUserProfile());
-    dispatch(fetchNotifications());
-    getRandomQuote();
-  }, [dispatch, getRandomQuote]);
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    syncData(false);
+  };
 
   const handleJoinByCode = async () => {
     const trimmedCode = inviteCode.trim();
@@ -116,7 +138,7 @@ const HomePage = () => {
       router.push(`/(routers)/family/${result?.family._id}`);
       setInviteCode("");
     } catch (err: any) {
-      Alert.alert("Family Not Found", err || "Check the code and try again.");
+      Alert.alert("Invalid Entry", "The invite code provided is incorrect.");
     } finally {
       setIsSearchingCode(false);
     }
@@ -126,37 +148,46 @@ const HomePage = () => {
     f.familyName?.toLowerCase().includes(localSearch.toLowerCase())
   );
 
-  const cardAccents = [COLORS.primary, COLORS.secondary, COLORS.mint];
-
   return (
     <SafeAreaView style={styles.container}>
+      <LoadingModal visible={isSyncing && !families.length} />
+
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-        {/* Header */}
         <View style={styles.header}>
           <View>
-            <AppText type="bold" style={styles.welcomeText}>
-              Good day,
+            <AppText style={styles.brandTag} type="bold">
+              KINDRED
             </AppText>
-            <AppText type="bold" style={styles.userName}>
-              {user?.firstName || "Welcome"}
-            </AppText>
+            <View style={styles.userGreet}>
+              <AppText type="bold" style={styles.userName}>
+                {user?.firstName || "Hello"}
+              </AppText>
+              <Crown size={18} color={COLORS.black} style={{ marginLeft: 6 }} />
+            </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.notificationBtn}
-            onPress={() => router.push("/(tabs)/notifications")}
-          >
-            <Bell size={24} color={COLORS.black} />
-            {globalNotificationsCount > 0 && (
-              <View style={styles.unreadBadge}>
-                <AppText style={styles.unreadCountText} type="bold">
-                  {globalNotificationsCount > 9
-                    ? "9+"
-                    : globalNotificationsCount}
-                </AppText>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => setIsGridView(!isGridView)}
+            >
+              {isGridView ? (
+                <List size={22} color={COLORS.black} />
+              ) : (
+                <LayoutGrid size={22} color={COLORS.black} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.headerBtn, styles.notifBtn]}
+              onPress={() => router.push("/(tabs)/notifications")}
+            >
+              <Bell size={22} color={COLORS.black} />
+              {globalNotificationsCount > 0 && (
+                <View style={styles.notifBadge} />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -164,139 +195,140 @@ const HomePage = () => {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={familyLoading}
+              refreshing={isRefreshing}
               onRefresh={onRefresh}
-              colors={[COLORS.yellow]}
+              tintColor={COLORS.black}
             />
           }
         >
-          {/* Quote Section */}
-          <View style={styles.quoteContainer}>
-            <Sparkles
-              size={16}
-              color={COLORS.primary}
-              style={{ marginRight: 8 }}
-            />
+          <View style={styles.quoteBox}>
+            <Sparkles size={16} color={COLORS.black} />
             <AppText style={styles.quoteText} type="medium">
-              "{currentQuote}"
+              {currentQuote.toUpperCase()}
             </AppText>
           </View>
 
-          {/* Join with Invite Code */}
-          <AppText type="bold" style={styles.sectionTitle}>
-            Join with Invite Code
-          </AppText>
-          <View style={styles.inviteSearchContainer}>
-            <Hash size={18} color={COLORS.icon} />
-            <TextInput
-              placeholder="Enter code"
-              style={styles.searchInput}
-              value={inviteCode}
-              onChangeText={setInviteCode}
-              placeholderTextColor={COLORS.icon}
-              autoCapitalize="characters"
-            />
-            <TouchableOpacity
-              style={styles.goButton}
-              onPress={handleJoinByCode}
-            >
-              {isSearchingCode ? (
-                <ActivityIndicator size="small" />
-              ) : (
-                <ArrowRight size={20} color={COLORS.black} />
-              )}
-            </TouchableOpacity>
+          <View style={styles.searchSection}>
+            <View style={styles.searchLabelRow}>
+              <ShieldCheck size={14} color={COLORS.black} />
+              <AppText type="bold" style={styles.searchLabel}>
+                JOIN BY INVITE CODE
+              </AppText>
+            </View>
+            <View style={styles.inviteInputRow}>
+              <Hash size={20} color={COLORS.textGrey} />
+              <TextInput
+                placeholder="INVITE CODE"
+                style={styles.inviteInput}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                placeholderTextColor={COLORS.textGrey}
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity
+                style={styles.inviteGoBtn}
+                onPress={handleJoinByCode}
+              >
+                {isSearchingCode ? (
+                  <ActivityIndicator size="small" color={COLORS.black} />
+                ) : (
+                  <ArrowRight size={22} color={COLORS.black} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Create Button */}
           <TouchableOpacity
-            style={styles.createBtn}
+            style={styles.createFamilyBtn}
             onPress={() => router.push("/(routers)/family/CreateFamily")}
+            activeOpacity={0.8}
           >
-            <View style={styles.plusCircle}>
-              <Plus size={18} color={COLORS.black} />
+            <View style={styles.createIconBox}>
+              <Plus size={24} color={COLORS.black} />
             </View>
             <AppText type="bold" style={styles.createBtnText}>
-              Create New Family
+              START A NEW FAMILY CIRCLE
             </AppText>
+            <Fingerprint size={20} color={COLORS.black} />
           </TouchableOpacity>
 
-          <View style={styles.divider} />
-
-          {/* Families List Header */}
           <View style={styles.listHeader}>
-            <AppText type="bold" style={styles.sectionTitle}>
-              Your Families
+            <AppText type="bold" style={styles.listTitle}>
+              YOUR FAMILY CIRCLES
             </AppText>
             <View style={styles.filterBox}>
-              <Search size={14} color={COLORS.icon} />
+              <Search size={14} color={COLORS.textGrey} />
               <TextInput
-                placeholder="Filter..."
-                style={styles.filterInput}
+                placeholder="FILTER"
+                style={styles.filterText}
                 value={localSearch}
                 onChangeText={setLocalSearch}
-                placeholderTextColor={COLORS.icon}
               />
             </View>
           </View>
 
-          {/* Family Cards Mapping */}
-          {filteredFamilies.map((item, index) => {
-            const accentColor = cardAccents[index % cardAccents.length];
+          <View
+            style={isGridView ? styles.gridContainer : styles.listContainer}
+          >
+            {filteredFamilies.map((item, index) => {
+              const totalUnread = Object.values(
+                item.unreadSummary || {}
+              ).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+              const familyColor = FAMILY_COLORS[index % FAMILY_COLORS.length];
 
-            // Calculate total unread count from the unreadSummary object in your JSON
-            const summary = item.unreadSummary || {};
-            const totalUnread = Object.values(summary).reduce(
-              (acc: number, val: any) => acc + (Number(val) || 0),
-              0
-            );
-
-            return (
-              <TouchableOpacity
-                key={item._id}
-                style={styles.familyCard}
-                onPress={() => router.push(`/(routers)/family/${item._id}`)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[styles.accentBar, { backgroundColor: accentColor }]}
-                />
-                <View style={styles.cardContent}>
-                  <View style={styles.cardTop}>
-                    <View style={{ flex: 1 }}>
-                      <AppText type="bold" style={styles.familyName}>
+              return (
+                <TouchableOpacity
+                  key={item._id}
+                  style={isGridView ? styles.gridCard : styles.listCard}
+                  onPress={() => router.push(`/(routers)/family/${item._id}`)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cardInfo}>
+                    <View style={styles.cardTop}>
+                      <View
+                        style={[
+                          styles.colorIndicator,
+                          { backgroundColor: familyColor },
+                        ]}
+                      />
+                      <AppText
+                        type="bold"
+                        style={styles.cardName}
+                        numberOfLines={1}
+                      >
                         {item.familyName}
                       </AppText>
-                      <AppText style={styles.inviteLabel}>
-                        Code: {item.inviteCode}
-                      </AppText>
+                      {totalUnread > 0 && (
+                        <View style={styles.unreadBadge}>
+                          <AppText type="bold" style={styles.unreadText}>
+                            {totalUnread}
+                          </AppText>
+                        </View>
+                      )}
                     </View>
 
-                    {/* Notification Badge for specific family */}
-                    {totalUnread > 0 && (
-                      <View style={styles.familyUnreadBadge}>
-                        <AppText style={styles.familyUnreadText} type="bold">
-                          {totalUnread > 99 ? "99+" : totalUnread}
+                    <View style={styles.cardBottom}>
+                      <View style={styles.meta}>
+                        <Users size={12} color={familyColor} />
+                        <AppText style={styles.metaValue}>
+                          {item.members?.length || 0}
                         </AppText>
                       </View>
-                    )}
-
-                    <ChevronRight size={20} color={COLORS.icon} />
+                      <AppText
+                        style={[styles.typeText, { color: familyColor }]}
+                        numberOfLines={1}
+                      >
+                        • {item.familyType}
+                      </AppText>
+                    </View>
                   </View>
-
-                  <View style={styles.memberRow}>
-                    <Users size={14} color={COLORS.textLight} />
-                    <AppText style={styles.memberCount}>
-                      {item.members?.length || 0} members
-                    </AppText>
-                    <AppText style={styles.familyTypeTag}>
-                      • {item.familyType}
-                    </AppText>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                  {!isGridView && (
+                    <ChevronRight size={22} color={COLORS.border} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </ScrollView>
       </Animated.View>
     </SafeAreaView>
@@ -305,6 +337,24 @@ const HomePage = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loaderContainer: {
+    alignItems: "center",
+    backgroundColor: COLORS.black,
+    padding: 30,
+    borderRadius: 20,
+  },
+  loaderText: {
+    color: COLORS.primary,
+    marginTop: 15,
+    fontSize: 10,
+    letterSpacing: 2,
+  },
   header: {
     paddingHorizontal: 24,
     paddingVertical: 20,
@@ -312,143 +362,150 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  welcomeText: { fontSize: 13, color: COLORS.textLight },
-  userName: { fontSize: 24, color: COLORS.text, marginTop: 2 },
-  notificationBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  brandTag: { fontSize: 10, color: COLORS.black, letterSpacing: 4 },
+  userGreet: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+  userName: { fontSize: 24, color: COLORS.black },
+  headerActions: { flexDirection: "row", gap: 12 },
+  headerBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: COLORS.surface,
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  unreadBadge: {
+  notifBtn: { position: "relative" },
+  notifBadge: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: COLORS.unreadRed,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 4,
+    top: 12,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.unread,
     borderWidth: 2,
-    borderColor: COLORS.background,
+    borderColor: COLORS.surface,
   },
-  unreadCountText: { color: "#FFFFFF", fontSize: 10, textAlign: "center" },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
-  quoteContainer: {
+  quoteBox: {
     flexDirection: "row",
-    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    backgroundColor: COLORS.primary,
     padding: 16,
-    borderRadius: 20,
-    marginBottom: 24,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.yellow,
+    borderRadius: 12,
+    marginVertical: 20,
+    gap: 10,
   },
-  quoteText: { fontSize: 14, color: COLORS.text, fontStyle: "italic", flex: 1 },
-  sectionTitle: { fontSize: 16, color: COLORS.text, marginBottom: 12 },
-  inviteSearchContainer: {
+  quoteText: { fontSize: 10, color: COLORS.black, flex: 1, letterSpacing: 1 },
+  searchSection: { marginBottom: 25 },
+  searchLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  searchLabel: { fontSize: 10, color: COLORS.black, letterSpacing: 2 },
+  inviteInputRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
-    borderRadius: 18,
+    borderRadius: 16,
     paddingLeft: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 20,
+    borderColor: COLORS.border,
   },
-  searchInput: {
+  inviteInput: {
     flex: 1,
-    fontSize: 15,
     paddingVertical: 14,
-    color: COLORS.text,
     marginLeft: 10,
+    fontSize: 14,
+    color: COLORS.black,
+    letterSpacing: 1,
   },
-  goButton: {
-    backgroundColor: COLORS.yellow,
-    padding: 12,
-    borderRadius: 14,
+  inviteGoBtn: {
+    backgroundColor: COLORS.primary,
+    padding: 10,
+    borderRadius: 12,
     margin: 4,
   },
-  createBtn: {
+  createFamilyBtn: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.black,
-    padding: 14,
-    borderRadius: 18,
-    gap: 12,
-    marginBottom: 24,
-  },
-  plusCircle: {
-    width: 32,
-    height: 32,
+    padding: 18,
     borderRadius: 16,
-    backgroundColor: COLORS.yellow,
-    justifyContent: "center",
-    alignItems: "center",
+    marginBottom: 35,
+    justifyContent: "space-between",
   },
-  createBtnText: { color: COLORS.yellow, fontSize: 16 },
-  divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 24 },
+  createIconBox: {
+    backgroundColor: COLORS.primary,
+    padding: 6,
+    borderRadius: 10,
+  },
+  createBtnText: { color: COLORS.primary, fontSize: 14, letterSpacing: 1 },
   listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 15,
   },
+  listTitle: { fontSize: 12, color: COLORS.black, letterSpacing: 2 },
   filterBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
-    borderRadius: 12,
-    width: "50%",
-    height: 36,
-  },
-  filterInput: { flex: 1, fontSize: 13, color: COLORS.text, marginLeft: 6 },
-  familyCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 22,
-    marginBottom: 12,
-    flexDirection: "row",
-    overflow: "hidden",
+    borderRadius: 10,
+    width: "45%",
+    height: 34,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: COLORS.border,
   },
-  accentBar: { width: 6 },
-  cardContent: { flex: 1, padding: 18 },
+  filterText: { flex: 1, fontSize: 11, marginLeft: 6 },
+  listContainer: { gap: 12 },
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  gridContainer: { flexDirection: "row", flexWrap: "wrap", gap: GRID_SPACING },
+  gridCard: {
+    width: COLUMN_WIDTH,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    height: 130,
+    justifyContent: "space-between",
+  },
+  cardInfo: { flex: 1 },
   cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
   },
-  familyName: { fontSize: 17, color: COLORS.text },
-  familyUnreadBadge: {
-    backgroundColor: COLORS.unreadRed,
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
+  colorIndicator: { width: 12, height: 12, borderRadius: 4, marginRight: 8 },
+  cardName: { fontSize: 15, color: COLORS.black, flex: 1 },
+  unreadBadge: {
+    backgroundColor: COLORS.black,
     paddingHorizontal: 6,
+    height: 18,
+    borderRadius: 6,
+    justifyContent: "center",
   },
-  familyUnreadText: { color: "#FFF", fontSize: 10, textAlign: "center" },
-  inviteLabel: {
-    fontSize: 12,
-    color: COLORS.textLight,
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-  memberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-  },
-  memberCount: { fontSize: 13, color: COLORS.textLight },
-  familyTypeTag: { fontSize: 12, color: COLORS.textLight },
+  unreadText: { color: COLORS.primary, fontSize: 9 },
+  cardBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
+  meta: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaValue: { fontSize: 12, color: COLORS.black, fontWeight: "bold" },
+  typeText: { fontSize: 11, fontWeight: "bold" },
 });
 
 export default HomePage;

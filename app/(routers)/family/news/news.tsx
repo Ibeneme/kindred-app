@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Send,
   X,
+  Volume2,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { Audio } from "expo-av";
@@ -40,15 +41,13 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
 
-const DARK = "#111827";
-const PRIMARY_YELLOW = "#FBBF24";
-const GRAY = "#6B7280";
-const LIGHT_GRAY = "#F3F4F6";
-const RED = "#EF4444";
+const DARK = "#0F172A";
+const PRIMARY_YELLOW = "#FFE66D";
+const GRAY = "#64748B";
+const LIGHT_GRAY = "#F8FAFC";
+const BORDER = "#E2E8F0";
+const RED = "#F43F5E";
 
-// ──────────────────────────────────────────────────────────────
-//                     MEMOIZED NEWS ITEM
-// ──────────────────────────────────────────────────────────────
 const NewsItem = memo(
   ({
     item,
@@ -90,6 +89,7 @@ const NewsItem = memo(
 
     return (
       <View style={styles.newsCard}>
+        {/* AUTHOR HEADER */}
         <View style={styles.cardHeader}>
           <TouchableOpacity
             style={styles.authorSection}
@@ -99,19 +99,22 @@ const NewsItem = memo(
             }
           >
             <View style={styles.avatar}>
-              <AppText style={{ color: "#FFF", fontSize: 16 }}>
+              <AppText type="bold" style={{ color: DARK, fontSize: 16 }}>
                 {item?.author?.firstName?.[0] ?? "?"}
               </AppText>
             </View>
             <View>
               <AppText type="bold" style={styles.authorName}>
-                {(item?.author?.firstName ?? "") +
-                  " " +
-                  (item?.author?.lastName ?? "")}
+                {`${item?.author?.firstName ?? ""} ${
+                  item?.author?.lastName ?? ""
+                }`}
               </AppText>
               <AppText style={styles.dateText}>
                 {item?.createdAt
-                  ? new Date(item.createdAt).toLocaleDateString()
+                  ? new Date(item.createdAt).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })
                   : "—"}
               </AppText>
             </View>
@@ -126,17 +129,21 @@ const NewsItem = memo(
                     params: { newsId: item._id, familyId },
                   })
                 }
+                style={styles.editBtn}
               >
-                <Edit size={18} color={GRAY} style={{ marginRight: 15 }} />
+                <Edit size={16} color={GRAY} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => onDelete(item._id)}>
-                <Trash2 size={18} color={RED} />
+              <TouchableOpacity
+                onPress={() => onDelete(item._id)}
+                style={styles.trashBtn}
+              >
+                <Trash2 size={16} color={RED} />
               </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* IMAGE ZOOM TRIGGER */}
+        {/* MEDIA */}
         {item?.images?.length > 0 && (
           <TouchableOpacity
             activeOpacity={0.9}
@@ -146,28 +153,31 @@ const NewsItem = memo(
               source={{ uri: item.images[0].url }}
               style={styles.cardImage}
               contentFit="cover"
-              transition={200}
+              transition={300}
             />
           </TouchableOpacity>
         )}
 
-        <View style={{ padding: 16 }}>
+        <View style={styles.cardContentBody}>
           <AppText type="bold" style={styles.title}>
-            {item?.title ?? "Untitled"}
+            {item?.title ?? "Untitled Update"}
           </AppText>
           <AppText style={styles.content}>{displayContent}</AppText>
 
           {isLongText && (
             <TouchableOpacity onPress={() => setExpanded(!expanded)}>
               <AppText style={styles.seeMore}>
-                {expanded ? "See Less" : "See More"}
+                {expanded ? "Read Less" : "Read More"}
               </AppText>
             </TouchableOpacity>
           )}
 
           {item?.voiceNote?.url && (
             <TouchableOpacity
-              style={styles.voiceBtn}
+              style={[
+                styles.voiceBtn,
+                playingVoiceId === item._id && styles.voiceBtnActive,
+              ]}
               onPress={() =>
                 playingVoiceId === item._id
                   ? onStopVoice()
@@ -181,25 +191,32 @@ const NewsItem = memo(
                   <Play size={18} color={DARK} />
                 )}
               </View>
-              <AppText type="bold" style={{ marginLeft: 8, fontSize: 13 }}>
-                Listen to Audio Update
-              </AppText>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <AppText type="bold" style={{ fontSize: 13, color: DARK }}>
+                  Voice Update
+                </AppText>
+                <AppText style={{ fontSize: 11, color: GRAY }}>
+                  {playingVoiceId === item._id ? "Playing..." : "Tap to listen"}
+                </AppText>
+              </View>
+              <Volume2 size={18} color={GRAY} />
             </TouchableOpacity>
           )}
 
           <View style={styles.divider} />
 
+          {/* INTERACTIONS */}
           <View style={styles.interactionBar}>
             <TouchableOpacity
               style={[styles.pill, isLiked && styles.pillLiked]}
               onPress={() => onLike(item._id)}
             >
               <Heart
-                size={22}
+                size={20}
                 color={isLiked ? RED : DARK}
                 fill={isLiked ? RED : "transparent"}
               />
-              <AppText style={styles.interactionText}>
+              <AppText type="bold" style={styles.interactionText}>
                 {item?.likes?.length ?? 0}
               </AppText>
             </TouchableOpacity>
@@ -208,13 +225,14 @@ const NewsItem = memo(
               style={styles.pill}
               onPress={() => setShowInput((prev) => !prev)}
             >
-              <MessageCircle size={22} color={DARK} />
-              <AppText style={styles.interactionText}>
+              <MessageCircle size={20} color={DARK} />
+              <AppText type="bold" style={styles.interactionText}>
                 {item?.comments?.length ?? 0}
               </AppText>
             </TouchableOpacity>
           </View>
 
+          {/* COMMENTS PREVIEW */}
           {item?.comments?.length > 0 && (
             <View style={styles.commentsPreview}>
               {item.comments.slice(-2).map((comment: any, idx: number) => (
@@ -230,7 +248,7 @@ const NewsItem = memo(
               {item.comments.length > 2 && (
                 <TouchableOpacity onPress={() => onViewComments(item)}>
                   <AppText style={styles.viewAllText}>
-                    View all {item.comments.length} comments
+                    View all {item.comments.length} responses
                   </AppText>
                 </TouchableOpacity>
               )}
@@ -241,7 +259,7 @@ const NewsItem = memo(
             <View style={styles.commentInputContainer}>
               <TextInput
                 style={styles.commentInput}
-                placeholder="Add a comment..."
+                placeholder="Say something to the family..."
                 value={commentText}
                 onChangeText={setCommentText}
                 multiline
@@ -256,7 +274,7 @@ const NewsItem = memo(
                   { opacity: commentText.trim() ? 1 : 0.4 },
                 ]}
               >
-                <Send size={18} color={DARK} />
+                <Send size={16} color={DARK} />
               </TouchableOpacity>
             </View>
           )}
@@ -266,13 +284,9 @@ const NewsItem = memo(
   }
 );
 
-// ──────────────────────────────────────────────────────────────
-//                      MAIN NEWS FEED PAGE
-// ──────────────────────────────────────────────────────────────
 export default function NewsFeedPage() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-
   const { familyId, familyName, isOwner } = useLocalSearchParams<{
     familyId: string;
     familyName: string;
@@ -287,14 +301,10 @@ export default function NewsFeedPage() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<any | null>(null);
   const [detailCommentText, setDetailCommentText] = useState("");
-
-  // ZOOM STATE
   const [zoomImage, setZoomImage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (familyId) {
-      dispatch(getNewsByFamily(familyId as string));
-    }
+    if (familyId) dispatch(getNewsByFamily(familyId as string));
     return () => {
       Object.values(feedSoundsRef.current).forEach((sound) =>
         sound.unloadAsync()
@@ -309,9 +319,8 @@ export default function NewsFeedPage() {
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
       });
-      if (playingVoiceId && playingVoiceId !== newsId) {
+      if (playingVoiceId && playingVoiceId !== newsId)
         await feedSoundsRef.current[playingVoiceId]?.pauseAsync();
-      }
       let sound = feedSoundsRef.current[newsId];
       if (!sound) {
         const { sound: newSound } = await Audio.Sound.createAsync(
@@ -327,7 +336,7 @@ export default function NewsFeedPage() {
       }
       setPlayingVoiceId(newsId);
     } catch (err) {
-      console.error("Voice playback error:", err);
+      console.error("Voice error:", err);
     }
   };
 
@@ -355,12 +364,17 @@ export default function NewsFeedPage() {
           style={styles.backButton}
           onPress={() => (selectedPost ? setSelectedPost(null) : router.back())}
         >
-          <ArrowLeft color={DARK} size={24} />
+          <ArrowLeft color={DARK} size={22} />
         </TouchableOpacity>
-        <AppText type="bold" style={styles.headerTitle}>
-          {selectedPost ? "Discussion" : familyName || "News Feed"}
-        </AppText>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerTitleContainer}>
+          <AppText type="bold" style={styles.headerTitle}>
+            {selectedPost ? "Discussion" : familyName || "News Feed"}
+          </AppText>
+          {!selectedPost && (
+            <AppText style={styles.headerSub}>Latest Circle Updates</AppText>
+          )}
+        </View>
+        <View style={{ width: 44 }} />
       </View>
 
       {!selectedPost ? (
@@ -395,12 +409,13 @@ export default function NewsFeedPage() {
               onZoomImage={(url: string) => setZoomImage(url)}
             />
           )}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
           ListEmptyComponent={
             loading ? null : (
               <View style={styles.emptyState}>
+                <MessageCircle size={48} color={BORDER} />
                 <AppText style={styles.emptyStateText}>
-                  No family news yet.
+                  Silence in the circle. Start a conversation!
                 </AppText>
               </View>
             )
@@ -436,13 +451,13 @@ export default function NewsFeedPage() {
               onZoomImage={(url: string) => setZoomImage(url)}
             />
             <View style={styles.commentSectionHeader}>
-              <AppText type="bold" style={{ fontSize: 16 }}>
+              <AppText type="bold" style={{ fontSize: 16, color: DARK }}>
                 Comments ({selectedPost.comments?.length ?? 0})
               </AppText>
             </View>
             {selectedPost.comments?.map((c: any, i: number) => (
               <View key={i} style={styles.fullCommentItem}>
-                <View>
+                <View style={styles.detailCommentBubble}>
                   <AppText type="bold" style={styles.detailCommentAuthor}>
                     {c?.author?.firstName ?? "User"}
                   </AppText>
@@ -456,7 +471,7 @@ export default function NewsFeedPage() {
           <View style={styles.stickyCommentInput}>
             <TextInput
               style={styles.detailInput}
-              placeholder="Add a comment..."
+              placeholder="Write a response..."
               value={detailCommentText}
               onChangeText={setDetailCommentText}
               multiline
@@ -476,8 +491,8 @@ export default function NewsFeedPage() {
         </KeyboardAvoidingView>
       )}
 
-      {/* PHOTO ZOOM MODAL */}
-      <Modal visible={!!zoomImage} transparent={true} animationType="fade">
+      {/* ZOOM & DELETE MODALS (UNTOUCHED LOGIC, UPDATED STYLES) */}
+      <Modal visible={!!zoomImage} transparent animationType="fade">
         <View style={styles.zoomOverlay}>
           <TouchableOpacity
             style={styles.zoomCloseArea}
@@ -492,26 +507,24 @@ export default function NewsFeedPage() {
             style={styles.zoomCloseButton}
             onPress={() => setZoomImage(null)}
           >
-            <X color="#FFF" size={32} />
+            <X color="#FFF" size={28} />
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* DELETE MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.deleteModal}>
             <AlertTriangle
               color={RED}
-              size={48}
-              style={{ alignSelf: "center", marginBottom: 15 }}
+              size={40}
+              style={{ alignSelf: "center", marginBottom: 12 }}
             />
             <AppText type="bold" style={styles.modalTitle}>
-              Confirm Delete
+              Delete Post?
             </AppText>
             <AppText style={styles.modalSub}>
-              Are you sure you want to remove this post? This action cannot be
-              undone.
+              This will remove the update from the family sanctuary forever.
             </AppText>
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -536,7 +549,7 @@ export default function NewsFeedPage() {
       {!selectedPost && (
         <TouchableOpacity
           style={styles.fab}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
           onPress={() =>
             router.push({
               pathname: "/(routers)/family/news/CreateNewsPage",
@@ -544,7 +557,7 @@ export default function NewsFeedPage() {
             })
           }
         >
-          <Plus color={DARK} size={28} />
+          <Plus color={DARK} size={32} />
         </TouchableOpacity>
       )}
     </SafeAreaView>
@@ -552,24 +565,39 @@ export default function NewsFeedPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderBottomColor: LIGHT_GRAY,
+    borderBottomColor: BORDER,
   },
-  backButton: { padding: 8, borderRadius: 12, backgroundColor: LIGHT_GRAY },
-  headerTitle: { fontSize: 18, color: DARK },
+  headerTitleContainer: { alignItems: "center" },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: { fontSize: 17, color: DARK },
+  headerSub: { fontSize: 11, color: GRAY, marginTop: 1 },
   newsCard: {
     backgroundColor: "#FFF",
-    borderRadius: 20,
+    borderRadius: 24,
     marginBottom: 20,
-    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: BORDER,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   cardHeader: {
     flexDirection: "row",
@@ -579,89 +607,92 @@ const styles = StyleSheet.create({
   },
   authorSection: { flexDirection: "row", alignItems: "center" },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: PRIMARY_YELLOW,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
   authorName: { fontSize: 15, color: DARK },
-  dateText: { fontSize: 12, color: GRAY, marginTop: 2 },
+  dateText: { fontSize: 11, color: GRAY, marginTop: 2 },
   headerActions: { flexDirection: "row", alignItems: "center" },
-  cardImage: { width: "100%", height: 250, backgroundColor: LIGHT_GRAY },
-  title: { fontSize: 18, color: DARK, marginBottom: 8 },
-  content: { fontSize: 15, lineHeight: 22, color: "#374151" },
-  seeMore: { color: PRIMARY_YELLOW, fontWeight: "700", marginTop: 5 },
+  editBtn: { padding: 8 },
+  trashBtn: { padding: 8 },
+  cardImage: { width: "100%", height: 280, backgroundColor: LIGHT_GRAY },
+  cardContentBody: { padding: 16 },
+  title: { fontSize: 18, color: DARK, marginBottom: 8, lineHeight: 24 },
+  content: { fontSize: 15, lineHeight: 24, color: "#334155" },
+  seeMore: { color: "#854D0E", fontWeight: "800", marginTop: 8 },
   voiceBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: LIGHT_GRAY,
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 15,
+    backgroundColor: "#FEFCE8",
+    padding: 14,
+    borderRadius: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#FEF9C3",
+  },
+  voiceBtnActive: {
+    backgroundColor: PRIMARY_YELLOW,
+    borderColor: PRIMARY_YELLOW,
   },
   voiceIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: PRIMARY_YELLOW,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
     alignItems: "center",
     justifyContent: "center",
   },
-  divider: { height: 1, backgroundColor: LIGHT_GRAY, marginVertical: 16 },
-  interactionBar: { flexDirection: "row", alignItems: "center", gap: 12 },
-  interactionText: {
-    marginLeft: 6,
-    fontSize: 14,
-    fontWeight: "600",
-    color: DARK,
-  },
-  commentsPreview: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 20,
-    padding: 12,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
-  },
-  viewAllText: { fontSize: 13, color: PRIMARY_YELLOW, fontWeight: "700" },
+  divider: { height: 1, backgroundColor: BORDER, marginVertical: 20 },
+  interactionBar: { flexDirection: "row", alignItems: "center", gap: 10 },
+  interactionText: { marginLeft: 6, fontSize: 14, color: DARK },
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    backgroundColor: LIGHT_GRAY,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderRadius: 100,
-    gap: 6,
+    gap: 4,
   },
   pillLiked: { backgroundColor: "#FFE4E6" },
-  commentItem: { flexDirection: "row", marginBottom: 4 },
-  commentAuthor: { fontSize: 13, color: DARK, marginRight: 4 },
-  commentText: { fontSize: 13, color: "#4B5563", flex: 1 },
+  commentsPreview: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  viewAllText: { fontSize: 13, color: DARK, fontWeight: "800", marginTop: 10 },
+  commentItem: { flexDirection: "row", marginBottom: 6 },
+  commentAuthor: { fontSize: 13, color: DARK, marginRight: 6 },
+  commentText: { fontSize: 13, color: "#475569", flex: 1 },
   commentInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    paddingTop: 16,
+    marginTop: 16,
     borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    backgroundColor: "#FAFAFA",
+    borderTopColor: BORDER,
   },
   commentInput: {
     flex: 1,
-    backgroundColor: "#FFF",
-    borderRadius: 20,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginRight: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    fontSize: 14,
   },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: PRIMARY_YELLOW,
     alignItems: "center",
     justifyContent: "center",
@@ -669,82 +700,105 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 30,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 22,
     backgroundColor: PRIMARY_YELLOW,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: DARK,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  commentSectionHeader: {
-    paddingHorizontal: 16,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: LIGHT_GRAY,
+  commentSectionHeader: { paddingHorizontal: 20, paddingVertical: 20 },
+  fullCommentItem: { paddingHorizontal: 20, marginBottom: 12 },
+  detailCommentBubble: {
+    backgroundColor: "#FFF",
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  fullCommentItem: { flexDirection: "row", padding: 16 },
-  detailCommentAuthor: { fontSize: 13, marginBottom: 2 },
-  detailCommentText: { fontSize: 14, color: "#374151", lineHeight: 20 },
+  detailCommentAuthor: { fontSize: 13, marginBottom: 4, color: DARK },
+  detailCommentText: { fontSize: 14, color: "#334155", lineHeight: 20 },
   stickyCommentInput: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
     backgroundColor: "#FFF",
     borderTopWidth: 1,
-    borderTopColor: LIGHT_GRAY,
+    borderTopColor: BORDER,
+    paddingBottom: Platform.OS === "ios" ? 34 : 16,
   },
   detailInput: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 20,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 15,
     maxHeight: 100,
     marginRight: 12,
   },
   sendIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 50,
+    height: 50,
+    borderRadius: 18,
     backgroundColor: PRIMARY_YELLOW,
     alignItems: "center",
     justifyContent: "center",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
     justifyContent: "center",
-    padding: 20,
+    padding: 24,
   },
-  deleteModal: { backgroundColor: "#FFF", borderRadius: 25, padding: 25 },
-  modalTitle: { fontSize: 20, textAlign: "center", marginBottom: 10 },
+  deleteModal: {
+    backgroundColor: "#FFF",
+    borderRadius: 32,
+    padding: 24,
+    alignItems: "center",
+  },
+  modalTitle: { fontSize: 20, color: DARK, marginBottom: 8 },
   modalSub: {
-    fontSize: 15,
+    fontSize: 14,
     color: GRAY,
     textAlign: "center",
     lineHeight: 22,
-    marginBottom: 25,
+    marginBottom: 24,
   },
   modalActions: { flexDirection: "row", gap: 12 },
   cancelBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 15,
+    paddingVertical: 16,
+    borderRadius: 16,
     backgroundColor: LIGHT_GRAY,
     alignItems: "center",
   },
   confirmBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 15,
+    paddingVertical: 16,
+    borderRadius: 16,
     backgroundColor: RED,
     alignItems: "center",
   },
-  emptyState: { alignItems: "center", justifyContent: "center", marginTop: 60 },
-  emptyStateText: { color: GRAY, fontSize: 16, marginTop: 10 },
-  // ZOOM STYLES
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 100,
+    paddingHorizontal: 40,
+  },
+  emptyStateText: {
+    color: GRAY,
+    fontSize: 15,
+    textAlign: "center",
+    marginTop: 16,
+    lineHeight: 22,
+  },
   zoomOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",
@@ -757,8 +811,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 60,
     right: 20,
-    padding: 10,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 50,
+    height: 50,
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

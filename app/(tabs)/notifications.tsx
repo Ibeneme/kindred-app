@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
   TextInput,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -21,7 +22,6 @@ import {
   Heart,
   Search,
   X,
-  Users,
 } from "lucide-react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/src/redux/store";
@@ -34,77 +34,40 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useGlobalSpinner } from "@/src/hooks/useGlobalSpinner";
 
-/**
- * HELPER FUNCTIONS
- * Defined outside the component to prevent hoisting errors and unnecessary re-renders.
- */
 const getTypeLabel = (type: string) => {
-  switch (type) {
-    case "NEW_SUGGESTION":
-      return "New Suggestion";
-    case "NEW_TASK":
-      return "Task Assigned";
-    case "NEW_DONATION":
-    case "DONATION_CREATED":
-      return "New Fundraiser";
-    case "DONATION_UPDATED":
-      return "Fund Updated";
-    case "DONATION_DELETED":
-      return "Fund Closed";
-    case "MEMBER_JOINED":
-      return "New Member";
-    case "INVITATION_RECEIVED":
-    case "FAMILY_INVITE":
-      return "Family Invite";
-    case "POLL_CREATED":
-      return "New Poll";
-    case "REPORT_SUBMITTED":
-      return "New Report";
-    case "REPORT_COMMENT":
-      return "Report Comment";
-    case "NEWS_UPDATE":
-      return "Family News";
-    case "FAMILY_UPDATE":
-      return "Family Update";
-    case "FAMILY_JOIN_ACCEPTED":
-      return "Join Accepted";
-    case "FAMILY_JOIN_REQUEST":
-      return "Join Request";
-    case "FAMILY_JOIN_DECLINED":
-      return "Join Declined";
-    default:
-      return "Update";
-  }
+  const labels: Record<string, string> = {
+    NEW_SUGGESTION: "Suggestion",
+    NEW_TASK: "Task",
+    NEW_DONATION: "Fundraiser",
+    DONATION_CREATED: "Fundraiser",
+    DONATION_UPDATED: "Fund Update",
+    DONATION_DELETED: "Fund Closed",
+    MEMBER_JOINED: "New Member",
+    FAMILY_INVITE: "Family Invite",
+    POLL_CREATED: "New Poll",
+    REPORT_SUBMITTED: "Report",
+    NEWS_UPDATE: "Family News",
+    FAMILY_JOIN_REQUEST: "Join Request",
+  };
+  return labels[type] || "Update";
 };
 
 const getNotificationIcon = (type: string) => {
+  const iconProps = { size: 18, strokeWidth: 2.5 };
   switch (type) {
     case "DONATION_CREATED":
-    case "DONATION_UPDATED":
     case "NEW_DONATION":
-      return <Heart size={20} color="#EF4444" fill="#EF4444" />;
-    case "DONATION_DELETED":
-      return <Heart size={20} color="#9CA3AF" />;
+      return <Heart {...iconProps} color="#EF4444" />;
     case "NEW_SUGGESTION":
-      return <Lightbulb size={20} color="#EAB308" />;
+      return <Lightbulb {...iconProps} color="#EAB308" />;
     case "NEW_TASK":
-      return <ClipboardList size={20} color="#3B82F6" />;
+      return <ClipboardList {...iconProps} color="#3B82F6" />;
     case "POLL_CREATED":
-      return <BarChart3 size={20} color="#8B5CF6" />;
-    case "REPORT_SUBMITTED":
-    case "REPORT_COMMENT":
-      return <FileText size={20} color="#EF4444" />;
+      return <BarChart3 {...iconProps} color="#8B5CF6" />;
     case "NEWS_UPDATE":
-    case "FAMILY_UPDATE":
-      return <Newspaper size={20} color="#10B981" />;
-    case "MEMBER_JOINED":
-    case "INVITATION_RECEIVED":
-    case "FAMILY_INVITE":
-    case "FAMILY_JOIN_REQUEST":
-    case "FAMILY_JOIN_ACCEPTED":
-      return <UserPlus size={20} color="#10B981" />;
+      return <Newspaper {...iconProps} color="#10B981" />;
     default:
-      return <Bell size={20} color="#6B7280" />;
+      return <Bell {...iconProps} color="#6366F1" />;
   }
 };
 
@@ -123,96 +86,45 @@ const NotificationsPage = () => {
     dispatch(fetchNotifications());
   }, []);
 
-  const onRefresh = useCallback(() => {
-    dispatch(fetchNotifications());
-  }, [dispatch]);
-
   const filteredNotifications = useMemo(() => {
     if (!searchQuery.trim()) return notifications;
     const query = searchQuery.toLowerCase();
     return notifications.filter(
       (n: any) =>
         n.title?.toLowerCase().includes(query) ||
-        n.message?.toLowerCase().includes(query) ||
-        getTypeLabel(n.type).toLowerCase().includes(query)
+        n.message?.toLowerCase().includes(query)
     );
   }, [notifications, searchQuery]);
 
   const handleNotificationPress = (notification: any) => {
-    if (!notification.isRead) {
-      dispatch(markAsRead(notification._id));
-    }
-
-    const familyId = notification.familyId;
-    const type = notification.type;
-
-    // Routing Logic
-    if (
-      ["DONATION_CREATED", "DONATION_UPDATED", "NEW_DONATION"].includes(type)
-    ) {
-      return router.push({
-        pathname: "/family/[id]",
-        params: { id: familyId },
-      });
-    }
-
-    if (type === "NEW_SUGGESTION") {
-      return router.push({
-        pathname: "/family/[id]",
-        params: { id: familyId },
-      });
-    }
-
-    if (type === "NEW_TASK") {
-      return router.push({
-        pathname: "/family/[id]",
-        params: { id: familyId },
-      });
-    }
-
-    if (type === "POLL_CREATED") {
-      return router.push({
-        pathname: "/family/[id]",
-        params: { id: familyId },
-      });
-    }
-
-    if (["REPORT_SUBMITTED", "REPORT_COMMENT"].includes(type)) {
-      return router.push({
-        pathname: "/family/[id]",
-        params: { id: familyId },
-      });
-    }
-
-    if (type === "NEWS_UPDATE") {
-      return router.push({
-        pathname: "/family/news/news",
-        params: { id: familyId },
-      });
-    }
-
-    // Default: Route to the specific Family Dashboard for all other family-related types
-    return router.push({
+    if (!notification.isRead) dispatch(markAsRead(notification._id));
+    router.push({
       pathname: "/family/[id]",
-      params: { id: familyId },
+      params: { id: notification.familyId },
     });
   };
 
   const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
+      activeOpacity={0.7}
       style={[styles.notifCard, !item.isRead && styles.unreadCard]}
       onPress={() => handleNotificationPress(item)}
     >
-      <View style={styles.iconContainer}>
-        {getNotificationIcon(item.type)}
-        {!item.isRead && <View style={styles.unreadDot} />}
+      <View style={styles.iconWrapper}>
+        <View
+          style={[
+            styles.iconCircle,
+            { backgroundColor: item.isRead ? "#F3F4F6" : "#FEF9C3" },
+          ]}
+        >
+          {getNotificationIcon(item.type)}
+        </View>
+        {!item.isRead && <View style={styles.unreadPulse} />}
       </View>
 
       <View style={styles.contentContainer}>
         <View style={styles.labelRow}>
-          <AppText type="bold" style={styles.typeLabel}>
-            {getTypeLabel(item.type)}
-          </AppText>
+          <AppText style={styles.typeLabel}>{getTypeLabel(item.type)}</AppText>
           <AppText style={styles.timeLabel}>
             {item.createdAt
               ? formatDistanceToNow(new Date(item.createdAt), {
@@ -234,34 +146,35 @@ const NotificationsPage = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header Section */}
       <View style={styles.header}>
         <View>
           <AppText type="bold" style={styles.headerTitle}>
-            Notifications
+            Inbox
           </AppText>
-          {unreadCount > 0 && (
-            <AppText style={styles.unreadSub}>
-              {unreadCount} unread items
-            </AppText>
-          )}
+          <AppText style={styles.unreadSub}>
+            {unreadCount} unread notifications
+          </AppText>
         </View>
         <TouchableOpacity
           style={styles.markAllBtn}
           onPress={() => dispatch(markAllAsRead())}
         >
-          <CheckCheck size={22} color="#6B7280" />
+          <CheckCheck size={20} color="#EAB308" />
+          <AppText style={styles.markAllText}>Read All</AppText>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchWrapper}>
+      {/* Search Section */}
+      <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Search size={18} color="#94A3B8" />
           <TextInput
-            placeholder="Search updates..."
+            placeholder="Search notifications..."
             style={styles.input}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            autoCapitalize="none"
+            placeholderTextColor="#94A3B8"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery("")}>
@@ -276,27 +189,26 @@ const NotificationsPage = () => {
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={loading}
-            onRefresh={onRefresh}
+            onRefresh={() => dispatch(fetchNotifications())}
             tintColor="#EAB308"
           />
         }
         ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
-              <Bell size={60} color="#E5E7EB" />
-              <AppText type="bold" style={styles.emptyTitle}>
-                {searchQuery ? "No matches found" : "All caught up"}
-              </AppText>
-              <AppText style={styles.emptySubtitle}>
-                {searchQuery
-                  ? `Nothing matches "${searchQuery}"`
-                  : "No notifications yet."}
-              </AppText>
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Bell size={40} color="#CBD5E1" />
             </View>
-          ) : null
+            <AppText type="bold" style={styles.emptyTitle}>
+              Nothing here yet
+            </AppText>
+            <AppText style={styles.emptySubtitle}>
+              We'll notify you when something happens.
+            </AppText>
+          </View>
         }
       />
     </SafeAreaView>
@@ -304,69 +216,83 @@ const NotificationsPage = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    alignItems: "flex-end",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    backgroundColor: "#F8FAFC",
   },
-  headerTitle: { fontSize: 24, color: "#111827" },
-  unreadSub: {
+  headerTitle: { fontSize: 28, color: "#0F172A", letterSpacing: -0.5 },
+  unreadSub: { fontSize: 14, color: "#64748B", marginTop: 4 },
+  markAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  markAllText: {
     fontSize: 13,
     color: "#EAB308",
-    marginTop: 2,
+    marginLeft: 6,
     fontWeight: "600",
   },
-  markAllBtn: { padding: 8, backgroundColor: "#F3F4F6", borderRadius: 12 },
-  searchWrapper: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    backgroundColor: "#FFF",
-  },
+  searchContainer: { paddingHorizontal: 24, marginBottom: 15 },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 15,
-    borderRadius: 15,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  input: { flex: 1, marginLeft: 10, color: "#1E293B", fontSize: 15 },
+  list: { paddingHorizontal: 16, paddingBottom: 40 },
+  notifCard: {
+    flexDirection: "row",
+    padding: 16,
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
-  input: {
-    flex: 1,
-    height: 45,
-    marginLeft: 10,
-    color: "#1E293B",
-    fontSize: 14,
+  unreadCard: {
+    borderColor: "#FEF9C3",
+    backgroundColor: "#FFFEF5",
+    shadowColor: "#EAB308",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  list: { paddingVertical: 5 },
-  notifCard: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F9FAFB",
-  },
-  unreadCard: { backgroundColor: "#FDFCF0" },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#F3F4F6",
+  iconWrapper: { position: "relative" },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 15,
+    marginRight: 16,
   },
-  unreadDot: {
+  unreadPulse: {
     position: "absolute",
-    top: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    top: -2,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: "#EAB308",
     borderWidth: 2,
     borderColor: "#FFF",
@@ -375,25 +301,42 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
+    alignItems: "center",
+    marginBottom: 6,
   },
   typeLabel: {
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#94A3B8",
+    fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
-  timeLabel: { fontSize: 11, color: "#9CA3AF" },
-  notifTitle: { fontSize: 15, color: "#111827", marginBottom: 3 },
-  notifMessage: { fontSize: 14, color: "#4B5563", lineHeight: 20 },
+  timeLabel: { fontSize: 11, color: "#94A3B8" },
+  notifTitle: { fontSize: 16, color: "#1E293B", marginBottom: 4 },
+  notifMessage: { fontSize: 14, color: "#64748B", lineHeight: 20 },
   emptyContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 100,
+    marginTop: 80,
   },
-  emptyTitle: { fontSize: 18, marginTop: 15, color: "#111827" },
-  emptySubtitle: { fontSize: 14, color: "#6B7280", marginTop: 8 },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyTitle: { fontSize: 18, color: "#334155" },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#94A3B8",
+    marginTop: 8,
+    textAlign: "center",
+    paddingHorizontal: 40,
+  },
 });
 
 export default NotificationsPage;

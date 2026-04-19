@@ -17,330 +17,290 @@ import {
   Shield,
   Users,
   Lock,
-  MessageSquare,
-  Settings,
   ChevronRight,
+  LifeBuoy,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 
-// Color palette matching your current design
+// Updated Palette for Consistency
 const COLORS = {
-  black: "#000000",
-  yellow: "#FFE66D",
-  primary: "#FF6B6B",
-  secondary: "#4ECDC4",
-  mint: "#95E1BF",
-  background: "#FFFFFF",
-  surface: "#F8FAFC",
-  text: "#1E293B",
-  textLight: "#64748B",
-  icon: "#64748B",
+  primaryGold: "#EAB308",
+  goldLight: "#FEF9C3",
+  slateDark: "#0F172A",
+  slateText: "#1E293B",
+  slateLight: "#64748B",
+  bg: "#F8FAFC",
+  card: "#FFFFFF",
+  border: "#E2E8F0",
 };
 
 const SupportPage = () => {
   const router = useRouter();
 
-  const openEmail = () => {
-    Linking.openURL("mailto:support@kindred.family");
-  };
-
-  const openPhone = () => {
-    Linking.openURL("tel:18005463733"); // 1-800-KINDRED
-  };
+  const openEmail = () => Linking.openURL("mailto:support@kindred.family");
+  const openPhone = () => Linking.openURL("tel:18005463733");
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={COLORS.text} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.headerBtn}
+        >
+          <ArrowLeft size={22} color={COLORS.slateText} />
         </TouchableOpacity>
         <AppText type="bold" style={styles.headerTitle}>
-          Support & Help
+          Help Center
         </AppText>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 42 }} />
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Contact Support Section */}
-        <View style={styles.section}>
-          <AppText type="bold" style={styles.sectionTitle}>
-            Contact Support
+        {/* Contact Support Hero Card */}
+        <View style={styles.heroSection}>
+          <View style={styles.heroIconCircle}>
+            <LifeBuoy size={32} color={COLORS.primaryGold} />
+          </View>
+          <AppText type="bold" style={styles.heroTitle}>
+            How can we help?
           </AppText>
-          <AppText style={styles.sectionSubtitle}>
-            Get help with your Kindred experience
-          </AppText>
-
-          <TouchableOpacity style={styles.contactCard} onPress={openEmail}>
-            <View style={styles.contactIconCircle}>
-              <Mail size={22} color={COLORS.yellow} />
-            </View>
-            <View style={styles.contactInfo}>
-              <AppText type="bold" style={styles.contactLabel}>
-                Email
-              </AppText>
-              <AppText style={styles.contactValue}>
-                support@kindred.family
-              </AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.contactCard} onPress={openPhone}>
-            <View style={styles.contactIconCircle}>
-              <Phone size={22} color={COLORS.yellow} />
-            </View>
-            <View style={styles.contactInfo}>
-              <AppText type="bold" style={styles.contactLabel}>
-                Phone
-              </AppText>
-              <AppText style={styles.contactValue}>1-800-KINDRED</AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
-
-          <AppText style={styles.responseTime}>
-            We typically respond within 24 hours during business days.
+          <AppText style={styles.heroSubtitle}>
+            Our team typically responds within 24 hours.
           </AppText>
         </View>
 
-        {/* Help Articles Section */}
         <View style={styles.section}>
-          <AppText type="bold" style={styles.sectionTitle}>
+          <TouchableOpacity style={styles.contactCard} onPress={openEmail}>
+            <View style={styles.iconBox}>
+              <Mail size={20} color={COLORS.primaryGold} />
+            </View>
+            <View style={styles.flexOne}>
+              <AppText style={styles.cardLabel}>Email Support</AppText>
+              <AppText type="bold" style={styles.cardValue}>
+                support@kindred.family
+              </AppText>
+            </View>
+            <ChevronRight size={18} color={COLORS.slateLight} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.contactCard} onPress={openPhone}>
+            <View style={styles.iconBox}>
+              <Phone size={20} color={COLORS.primaryGold} />
+            </View>
+            <View style={styles.flexOne}>
+              <AppText style={styles.cardLabel}>Phone Line</AppText>
+              <AppText type="bold" style={styles.cardValue}>
+                1-800-KINDRED
+              </AppText>
+            </View>
+            <ChevronRight size={18} color={COLORS.slateLight} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Knowledge Base */}
+        <View style={styles.section}>
+          <AppText type="bold" style={styles.sectionHeading}>
             Help Articles
           </AppText>
-          <AppText style={styles.sectionSubtitle}>
-            Common questions and guides
-          </AppText>
-
-          <TouchableOpacity style={styles.articleCard}>
-            <View
-              style={[
-                styles.articleIconCircle,
-                { backgroundColor: COLORS.primary },
-              ]}
-            >
-              <HelpCircle size={20} color={COLORS.black} />
-            </View>
-            <View style={styles.articleText}>
-              <AppText type="bold" style={styles.articleTitle}>
-                Getting Started with Kindred
-              </AppText>
-              <AppText style={styles.articleDesc}>
-                Learn the basics of family management
-              </AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.articleCard}>
-            <View
-              style={[
-                styles.articleIconCircle,
-                { backgroundColor: COLORS.secondary },
-              ]}
-            >
-              <Users size={20} color={COLORS.black} />
-            </View>
-            <View style={styles.articleText}>
-              <AppText type="bold" style={styles.articleTitle}>
-                Managing Family Donations
-              </AppText>
-              <AppText style={styles.articleDesc}>
-                How to create and manage donation campaigns
-              </AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.articleCard}>
-            <View
-              style={[
-                styles.articleIconCircle,
-                { backgroundColor: COLORS.mint },
-              ]}
-            >
-              <Shield size={20} color={COLORS.black} />
-            </View>
-            <View style={styles.articleText}>
-              <AppText type="bold" style={styles.articleTitle}>
-                Privacy & Security
-              </AppText>
-              <AppText style={styles.articleDesc}>
-                Understanding your data protection
-              </AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.articleCard}>
-            <View
-              style={[
-                styles.articleIconCircle,
-                { backgroundColor: COLORS.yellow },
-              ]}
-            >
-              <Lock size={20} color={COLORS.black} />
-            </View>
-            <View style={styles.articleText}>
-              <AppText type="bold" style={styles.articleTitle}>
-                Family Roles & Permissions
-              </AppText>
-              <AppText style={styles.articleDesc}>
-                Learn about admin and member roles
-              </AppText>
-            </View>
-            <ChevronRight size={22} color={COLORS.icon} />
-          </TouchableOpacity>
+          <View style={styles.articleList}>
+            <ArticleLink
+              icon={<HelpCircle size={18} color={COLORS.primaryGold} />}
+              title="Getting Started"
+              desc="Basics of family management"
+            />
+            <ArticleLink
+              icon={<Users size={18} color={COLORS.primaryGold} />}
+              title="Managing Donations"
+              desc="Creating fundraiser campaigns"
+            />
+            <ArticleLink
+              icon={<Shield size={18} color={COLORS.primaryGold} />}
+              title="Privacy & Security"
+              desc="Data protection explained"
+            />
+            <ArticleLink
+              icon={<Lock size={18} color={COLORS.primaryGold} />}
+              title="Roles & Permissions"
+              desc="Admin vs Member roles"
+              isLast
+            />
+          </View>
         </View>
 
         {/* FAQ Section */}
         <View style={styles.section}>
-          <AppText type="bold" style={styles.sectionTitle}>
-            Frequently Asked Questions
+          <AppText type="bold" style={styles.sectionHeading}>
+            Common Questions
           </AppText>
 
-          <View style={styles.faqItem}>
-            <AppText type="bold" style={styles.faqQuestion}>
-              How secure are family donations?
-            </AppText>
-            <AppText style={styles.faqAnswer}>
-              All donations are held in secure escrow accounts with bank-level
-              security. Funds can only be released with proper family admin
-              approval through our secure withdrawal process.
-            </AppText>
-          </View>
-
-          <View style={styles.faqItem}>
-            <AppText type="bold" style={styles.faqQuestion}>
-              Can I change my privacy settings?
-            </AppText>
-            <AppText style={styles.faqAnswer}>
-              Yes! Go to Settings → Privacy to control what information is
-              shared with family members and which notifications you receive.
-            </AppText>
-          </View>
-
-          <View style={styles.faqItem}>
-            <AppText type="bold" style={styles.faqQuestion}>
-              How do I invite new family members?
-            </AppText>
-            <AppText style={styles.faqAnswer}>
-              Family admins can invite new members by going to the Members tab
-              in your family dashboard and clicking "Invite Member". You can
-              invite by email or phone number.
-            </AppText>
-          </View>
-
-          <View style={styles.faqItem}>
-            <AppText type="bold" style={styles.faqQuestion}>
-              What happens if I forget my password?
-            </AppText>
-            <AppText style={styles.faqAnswer}>
-              You can reset your password from the login page by clicking
-              "Forgot Password" or change it in Settings → Security when logged
-              in.
-            </AppText>
-          </View>
+          <FAQItem
+            question="How secure are family donations?"
+            answer="All donations are held in secure escrow accounts. Funds are only released with admin approval through our multi-signature withdrawal process."
+          />
+          <FAQItem
+            question="Can I change my privacy settings?"
+            answer="Yes. Navigate to Profile → Preferences to control exactly what information is shared with other family members."
+          />
+          <FAQItem
+            question="How do I invite members?"
+            answer="Family admins can use the 'Invite' button on the Members tab to send invitations via email or a secure link."
+          />
         </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+// --- HELPER COMPONENTS ---
 
+const ArticleLink = ({ icon, title, desc, isLast }: any) => (
+  <TouchableOpacity
+    style={[styles.articleRow, isLast && { borderBottomWidth: 0 }]}
+  >
+    <View style={styles.articleIcon}>{icon}</View>
+    <View style={styles.flexOne}>
+      <AppText type="bold" style={styles.articleTitle}>
+        {title}
+      </AppText>
+      <AppText style={styles.articleDesc}>{desc}</AppText>
+    </View>
+    <ChevronRight size={16} color={COLORS.border} />
+  </TouchableOpacity>
+);
+
+const FAQItem = ({ question, answer }: any) => (
+  <View style={styles.faqCard}>
+    <AppText type="bold" style={styles.faqQuestion}>
+      {question}
+    </AppText>
+    <AppText style={styles.faqAnswer}>{answer}</AppText>
+  </View>
+);
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  flexOne: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    backgroundColor: COLORS.background,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: COLORS.card,
     borderBottomWidth: 1,
-    borderColor: "#EEE",
+    borderBottomColor: COLORS.border,
   },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 20, color: COLORS.text },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.bg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 16,
+    color: COLORS.slateText,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
 
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 20 },
 
-  section: { marginTop: 32 },
-  sectionTitle: { fontSize: 20, color: COLORS.text, marginBottom: 8 },
-  sectionSubtitle: { fontSize: 15, color: COLORS.textLight, marginBottom: 20 },
+  heroSection: { alignItems: "center", marginTop: 30, marginBottom: 20 },
+  heroIconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 25,
+    backgroundColor: COLORS.card,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 5,
+    marginBottom: 15,
+  },
+  heroTitle: { fontSize: 24, color: COLORS.slateText, letterSpacing: -0.5 },
+  heroSubtitle: { fontSize: 14, color: COLORS.slateLight, marginTop: 4 },
+
+  section: { marginTop: 25 },
+  sectionHeading: {
+    fontSize: 18,
+    color: COLORS.slateText,
+    marginBottom: 15,
+    marginLeft: 4,
+  },
 
   contactCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.card,
     padding: 18,
     borderRadius: 20,
     marginBottom: 12,
-    gap: 16,
+    gap: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  contactIconCircle: {
+  iconBox: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.black,
+    borderRadius: 14,
+    backgroundColor: COLORS.goldLight,
     justifyContent: "center",
     alignItems: "center",
   },
-  contactInfo: { flex: 1 },
-  contactLabel: { fontSize: 14, color: COLORS.textLight },
-  contactValue: { fontSize: 16, color: COLORS.text },
-
-  responseTime: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    textAlign: "center",
-    marginTop: 12,
+  cardLabel: {
+    fontSize: 12,
+    color: COLORS.slateLight,
+    textTransform: "uppercase",
+    fontWeight: "700",
   },
+  cardValue: { fontSize: 15, color: COLORS.slateText, marginTop: 1 },
 
-  articleCard: {
+  articleList: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  articleRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surface,
-    padding: 18,
-    borderRadius: 20,
-    marginBottom: 12,
-    gap: 16,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.bg,
+    gap: 15,
   },
-  articleIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  articleIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.bg,
     justifyContent: "center",
     alignItems: "center",
   },
-  articleText: { flex: 1 },
-  articleTitle: { fontSize: 16, color: COLORS.text },
-  articleDesc: { fontSize: 14, color: COLORS.textLight, marginTop: 4 },
+  articleTitle: { fontSize: 15, color: COLORS.slateText },
+  articleDesc: { fontSize: 13, color: COLORS.slateLight, marginTop: 2 },
 
-  faqItem: { marginBottom: 20 },
-  faqQuestion: { fontSize: 16, color: COLORS.text, marginBottom: 8 },
-  faqAnswer: { fontSize: 15, color: COLORS.textLight, lineHeight: 22 },
-
-  bottomSection: { marginTop: 40, alignItems: "center" },
-  bottomCard: {
-    backgroundColor: COLORS.surface,
-    padding: 28,
-    borderRadius: 28,
-    alignItems: "center",
-    gap: 16,
+  faqCard: {
+    backgroundColor: COLORS.card,
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  bottomText: { fontSize: 16, color: COLORS.text, textAlign: "center" },
-  settingsBtn: {
-    backgroundColor: COLORS.black,
-    paddingHorizontal: 28,
-    paddingVertical: 16,
-    borderRadius: 28,
-  },
-  settingsBtnText: { fontSize: 16, color: COLORS.yellow },
+  faqQuestion: { fontSize: 15, color: COLORS.slateText, marginBottom: 8 },
+  faqAnswer: { fontSize: 14, color: COLORS.slateLight, lineHeight: 20 },
 });
 
 export default SupportPage;
