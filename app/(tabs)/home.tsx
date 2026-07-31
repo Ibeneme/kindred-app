@@ -156,7 +156,7 @@ const HomePage = () => {
         <View style={styles.header}>
           <View>
             <AppText style={styles.brandTag} type="bold">
-              KINDRED
+              Kokohor
             </AppText>
             <View style={styles.userGreet}>
               <AppText type="bold" style={styles.userName}>

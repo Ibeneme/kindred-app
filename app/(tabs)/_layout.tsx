@@ -207,6 +207,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopWidth: 0,
     elevation: 20,
+    paddingBottom: 48
   },
   label: { fontSize: 12, fontWeight: "600" },
   iconContainer: {

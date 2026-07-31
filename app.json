@@ -1,31 +1,45 @@
 {
   "expo": {
-    "name": "Kindred",
-    "slug": "Kindred",
-    "version": "1.0.0",
+    "name": "kokohor",
+    "slug": "kokohor",
+    "version": "7.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kindred",
+    "scheme": "kokohor",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ibenemeikenna.Kindred"
+      "bundleIdentifier": "com.kokohor.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["voip", "audio", "remote-notification"],
+        "NSMicrophoneUsageDescription": "Kokohor needs microphone access for your family calls."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundImage": "./assets/images/icon.png",
+        "monochromeImage": "./assets/images/icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.ibenemeikenna.Kindred"
+      "package": "com.kokohor.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "ACCESS_NETWORK_STATE",
+        "INTERNET",
+        "CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
@@ -42,7 +56,13 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Kokohor to access your microphone for calls."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -53,8 +73,9 @@
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wemJsZmVmbGVqY3ljbGNvcGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMDgwNTQsImV4cCI6MjA4MjU4NDA1NH0.gsMilqRpVtYEd2Pj2ofPCQZiJOOMpCDY-8ucyvBsISk",
       "router": {},
       "eas": {
-        "projectId": "7375fcb5-8fba-408a-8b5f-c0520f15efd5"
+        "projectId": "bdb36e91-be76-4209-b212-02f9cf2e4558"
       }
-    }
+    },
+    "owner": "clonekraft-app"
   }
 }

@@ -24,19 +24,17 @@ import {
   Hash,
   ChevronLeft,
 } from "lucide-react-native";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 
 import { AppText } from "@/src/ui/AppText";
 import {
   register,
-  login,
   verifyOtp,
   resendOtp,
   forgotPassword,
   resetPassword,
-  clearError,
 } from "@/src/redux/slices/authSlice";
-import { AppDispatch, RootState } from "@/src/redux/store";
+import { AppDispatch } from "@/src/redux/store";
 import { saveAuthToken } from "@/src/redux/services/secureStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
@@ -50,8 +48,6 @@ const AuthPage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { loading, error } = useSelector((state: RootState) => state.auth);
-
   // Form states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,7 +57,8 @@ const AuthPage = () => {
   const [otp, setOtp] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
 
-  // UI states
+  // UI & Local State (No Redux useSelector for loading/error)
+  const [isLoading, setIsLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
@@ -80,14 +77,6 @@ const AuthPage = () => {
     };
   }, [resendTimer]);
 
-  useEffect(() => {
-    if (error) {
-      Alert.alert("Error", error, [
-        { text: "OK", onPress: () => dispatch(clearError()) },
-      ]);
-    }
-  }, [error, dispatch]);
-
   const formatDate = (date: Date): string => {
     const day = String(date.getDate()).padStart(2, "0");
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -95,96 +84,63 @@ const AuthPage = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const [isLoggingIn, setIsLoggingIn] = useState(false); // Add this state at the top
-
   const handleSignIn = async () => {
-    // 1. Prevent double taps
-    if (isLoggingIn) return;
-
-    console.log("--- 🚪 SIGN IN ATTEMPT START ---");
+    if (isLoading) return;
 
     if (!email.trim() || !password.trim()) {
-      Alert.alert(
-        "Missing Fields",
-        "Please enter both email and password to continue."
-      );
+      Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
 
-    setIsLoggingIn(true); // Start Loading
+    setIsLoading(true);
 
     try {
-      console.log("[Axios Request] POST /auth/login", { email: email.trim() });
-
       const response = await axiosInstance.post("/auth/login", {
         email: email.trim(),
         password,
       });
 
-      console.log("✅ [AXIOS SUCCESS] Status:", response.status);
-      console.log("✅ [AXIOS DATA]:", response.data);
+      const { token, user } = response.data;
 
-      const { data, status } = response;
+      await saveAuthToken(token);
+      const fullName = `${user.firstName} ${user.lastName}`;
+      await AsyncStorage.setItem("userFullName", fullName);
 
-      // 2. Handle the 202 "Unverified" Case
-      if (status === 202 || data.isVerified === false) {
-        console.log("⚠️ Account unverified. Switching to OTP view.");
+      setIsLoading(false);
+      router.push("/(tabs)/home");
+    } catch (err: any) {
+      setIsLoading(false);
+      const statusCode = err?.status;
+      const serverMessage = err?.message || err?.data?.message;
 
+      if (statusCode === 202 || err?.data?.isVerified === false) {
         Alert.alert(
           "Verification Required",
-          "Your account is not verified yet. We've sent a code to your email.",
+          "Your account is not verified. We've sent a code to your email.",
           [{ text: "Enter Code", onPress: () => setView("otp") }]
         );
-        setIsLoggingIn(false);
         return;
       }
 
-      // 3. Handle 200 "Success" Case
-      console.log("💾 Saving session data...");
-      await saveAuthToken(data.token);
-
-      // Cleanup local storage/async storage as per your logs
-      const fullName = `${data.user.firstName} ${data.user.lastName}`;
-      await AsyncStorage.setItem("userFullName", fullName);
-
-      console.log("✨ Login Complete. Navigating home.");
-      router.push("/(tabs)/home");
-    } catch (err: any) {
-      console.log("--- ❌ SIGN IN ERROR ---");
-
-      // Capture details from the error response
-      const serverMessage = err.response?.data?.message;
-      const statusCode = err.response?.status;
-
-      console.error(`Status: ${statusCode} | Message: ${serverMessage}`);
-
-      // Hide technical "difficulty" from user
-      if (statusCode === 401 || statusCode === 400) {
+      if (statusCode === 400 || statusCode === 401) {
         Alert.alert(
           "Invalid Credentials",
-          "The email or password you entered is incorrect."
+          serverMessage || "The email or password you entered is incorrect."
         );
       } else if (serverMessage?.toLowerCase().includes("verify")) {
-        // Fallback if backend sends 400 but message says verify
         setView("otp");
       } else {
         Alert.alert(
-          "Connection Error",
-          "We're having trouble reaching the server. Please check your internet and try again."
+          "Login Failed",
+          serverMessage || "Something went wrong. Please try again."
         );
       }
-    } finally {
-      setIsLoggingIn(false); // Stop Loading regardless of outcome
-      console.log("--- 🚪 SIGN IN ATTEMPT END ---");
     }
   };
+
   const handleSignUp = async () => {
-    console.log("🚀 [SignUp] Attempting with:", {
-      firstName,
-      lastName,
-      email,
-      phone,
-    });
+    if (isLoading) return;
+
     if (
       !email.trim() ||
       !password.trim() ||
@@ -196,59 +152,146 @@ const AuthPage = () => {
       Alert.alert("Missing fields", "Please fill all required fields");
       return;
     }
-    const result = await dispatch(
-      register({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        dateOfBirth: formatDate(dob),
-        password,
-      })
-    );
-    if (register.fulfilled.match(result)) setView("otp");
+
+    setIsLoading(true);
+
+    try {
+      const result = await dispatch(
+        register({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          dateOfBirth: formatDate(dob),
+          password,
+        })
+      );
+
+      setIsLoading(false);
+
+      if (register.fulfilled.match(result)) {
+        setView("otp");
+      } else {
+        Alert.alert(
+          "Registration Failed",
+          (result.payload as string) || "Please try again."
+        );
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      Alert.alert("Error", err?.message || "Something went wrong.");
+    }
   };
 
   const handleVerifyOtp = async () => {
-    if (!otp.trim()) return;
+    if (isLoading) return;
+    if (!otp.trim()) {
+      Alert.alert("Required", "Please enter the OTP code.");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const result = await dispatch(
         verifyOtp({ email: email.trim(), otp: otp.trim() })
-      ).unwrap();
+      );
 
-      Alert.alert("Success", "Account verified! Please sign in.");
-      setView("signin"); // Or immediately call handleSignIn() if you still have the password in state
-    } catch (err) {
-      Alert.alert("Verification Failed", "Invalid or expired code.");
+      setIsLoading(false);
+
+      if (verifyOtp.fulfilled.match(result)) {
+        Alert.alert("Success", "Account verified! Please sign in.");
+        setView("signin");
+      } else {
+        Alert.alert(
+          "Verification Failed",
+          (result.payload as string) || "Invalid or expired code."
+        );
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      Alert.alert(
+        "Verification Failed",
+        err?.message || "Invalid or expired code."
+      );
     }
   };
 
   const handleResendOtp = async () => {
-    console.log("🚀 [Resend] Requesting new code for:", email);
+    if (isLoading) return;
+    setIsLoading(true);
     setResendTimer(30);
-    const result = await dispatch(resendOtp({ email: email.trim() }));
-    if (resendOtp.fulfilled.match(result)) {
-      Alert.alert("Sent", "A new code has been sent to your email.");
+
+    try {
+      const result = await dispatch(resendOtp({ email: email.trim() }));
+      setIsLoading(false);
+      if (resendOtp.fulfilled.match(result)) {
+        Alert.alert("Sent", "A new code has been sent to your email.");
+      } else {
+        Alert.alert(
+          "Error",
+          (result.payload as string) || "Could not resend code."
+        );
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      Alert.alert("Error", err?.message || "Could not resend code.");
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim())
+    if (isLoading) return;
+    if (!email.trim()) {
       return Alert.alert("Required", "Please enter your email");
-    const result = await dispatch(forgotPassword({ email: email.trim() }));
-    if (forgotPassword.fulfilled.match(result)) setView("new_password");
+    }
+
+    setIsLoading(true);
+
+    try {
+      const result = await dispatch(forgotPassword({ email: email.trim() }));
+      setIsLoading(false);
+
+      if (forgotPassword.fulfilled.match(result)) {
+        setView("new_password");
+      } else {
+        Alert.alert("Error", (result.payload as string) || "Email not found.");
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      Alert.alert(
+        "Error",
+        err?.message || err?.data?.message || "Could not process request."
+      );
+    }
   };
 
   const handleCompleteReset = async () => {
-    if (!otp || !password)
+    if (isLoading) return;
+    if (!otp || !password) {
       return Alert.alert("Required", "Fill in OTP and new password");
-    const result = await dispatch(
-      resetPassword({ email: email.trim(), otp, newPassword: password })
-    );
-    if (resetPassword.fulfilled.match(result)) {
-      Alert.alert("Success", "Password updated successfully");
-      setView("signin");
+    }
+
+    setIsLoading(true);
+
+    try {
+      const result = await dispatch(
+        resetPassword({ email: email.trim(), otp, newPassword: password })
+      );
+
+      setIsLoading(false);
+
+      if (resetPassword.fulfilled.match(result)) {
+        Alert.alert("Success", "Password updated successfully");
+        setView("signin");
+      } else {
+        Alert.alert(
+          "Error",
+          (result.payload as string) || "Could not reset password."
+        );
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      Alert.alert("Error", err?.message || "Could not reset password.");
     }
   };
 
@@ -280,23 +323,23 @@ const AuthPage = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.formContainer}>
-            {/* VIEW: SIGN IN */}
-
             <View style={styles.logoContainer}>
               <Image
                 source={kindredImage}
                 style={styles.logo}
-                contentFit="contain" // Changed from cover to contain to avoid cropping
+                contentFit="contain"
                 placeholder={{ blurhash: "L6PZfSi_.AyE_4t7t7R**0o#DgR4" }}
               />
             </View>
+
+            {/* VIEW: SIGN IN */}
             {view === "signin" && (
               <>
                 <AppText style={styles.formTitle} type="bold">
                   Welcome back
                 </AppText>
                 <AppText style={styles.description} type="regular">
-                  Sign in to your Kindred account
+                  Sign in to your Kokohor Circle account
                 </AppText>
 
                 <View style={styles.inputGroup}>
@@ -350,11 +393,11 @@ const AuthPage = () => {
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.button, isLoggingIn && styles.buttonDisabled]}
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
                   onPress={handleSignIn}
-                  disabled={isLoggingIn}
+                  disabled={isLoading}
                 >
-                  {isLoggingIn ? (
+                  {isLoading ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -373,6 +416,7 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
+
             {/* VIEW: SIGN UP */}
             {view === "signup" && (
               <>
@@ -381,7 +425,7 @@ const AuthPage = () => {
                   Create account
                 </AppText>
                 <AppText style={styles.description} type="regular">
-                  Join the Kindred community today
+                  Join the Kokohor Circle community today
                 </AppText>
 
                 <View style={styles.row}>
@@ -513,11 +557,11 @@ const AuthPage = () => {
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.button, loading && styles.buttonDisabled]}
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
                   onPress={handleSignUp}
-                  disabled={loading}
+                  disabled={isLoading}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -527,6 +571,7 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
+
             {/* VIEW: OTP VERIFICATION */}
             {view === "otp" && (
               <>
@@ -553,7 +598,7 @@ const AuthPage = () => {
 
                 <TouchableOpacity
                   onPress={handleResendOtp}
-                  disabled={resendTimer > 0 || loading}
+                  disabled={resendTimer > 0 || isLoading}
                   style={styles.resendBtn}
                 >
                   <AppText
@@ -570,11 +615,11 @@ const AuthPage = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.button, loading && styles.buttonDisabled]}
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
                   onPress={handleVerifyOtp}
-                  disabled={loading}
+                  disabled={isLoading}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -584,6 +629,7 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
+
             {/* VIEW: RESET REQUEST */}
             {view === "reset" && (
               <>
@@ -601,16 +647,21 @@ const AuthPage = () => {
                     style={styles.input}
                     placeholder="Email"
                     keyboardType="email-address"
+                    autoCapitalize="none"
                     value={email}
                     onChangeText={setEmail}
                   />
                 </View>
                 <TouchableOpacity
-                  style={[styles.button, { marginTop: 20 }]}
+                  style={[
+                    styles.button,
+                    { marginTop: 20 },
+                    isLoading && styles.buttonDisabled,
+                  ]}
                   onPress={handleForgotPassword}
-                  disabled={loading}
+                  disabled={isLoading}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -620,6 +671,7 @@ const AuthPage = () => {
                 </TouchableOpacity>
               </>
             )}
+
             {/* VIEW: NEW PASSWORD */}
             {view === "new_password" && (
               <>
@@ -670,11 +722,11 @@ const AuthPage = () => {
                   </View>
                 </View>
                 <TouchableOpacity
-                  style={styles.button}
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
                   onPress={handleCompleteReset}
-                  disabled={loading}
+                  disabled={isLoading}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <ActivityIndicator color="#000" />
                   ) : (
                     <AppText style={styles.buttonText} type="bold">
@@ -765,11 +817,11 @@ const styles = StyleSheet.create({
   footerText: { marginTop: 24, fontSize: 15, color: "#6B7280" },
   linkText: { color: "#EAB308" },
   logoContainer: {
-    marginBottom: 30, // Adds space between logo and the "Welcome" text
-    marginTop: 10, // Space from the top of the screen
+    marginBottom: 30,
+    marginTop: 10,
   },
   logo: {
-    height: 80, // Slightly larger for better visibility
+    height: 80,
     width: 160,
   },
 });

@@ -1,8 +1,37 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const TOKEN_KEY = "co_authToken";
 const LAST_ACCESS_KEY = "co_lastAccess";
+const SECURE_STORE_EMAIL_KEY = "userEmail";
+const SECURE_STORE_PASSWORD_KEY = "userPassword";
+
+// Helper to handle storage safely across native and web
+const storage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === "web") {
+      return localStorage.getItem(key);
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === "web") {
+      localStorage.setItem(key, value);
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  },
+
+  async removeItem(key: string): Promise<void> {
+    if (Platform.OS === "web") {
+      localStorage.removeItem(key);
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  },
+};
 
 const decodeJwt = (token: string) => {
   try {
@@ -34,15 +63,15 @@ export const saveAuthToken = async (token: string | null | undefined): Promise<v
       return;
     }
 
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
-  } catch { }
+    await storage.setItem(TOKEN_KEY, token);
+  } catch (error) {
+    console.error("❌ Error saving auth token:", error);
+  }
 };
-
-
 
 export const getAuthToken = async (): Promise<string | null> => {
   try {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await storage.getItem(TOKEN_KEY);
 
     if (!token || !isTokenValid(token)) {
       await removeAuthToken();
@@ -50,7 +79,7 @@ export const getAuthToken = async (): Promise<string | null> => {
     }
 
     // Save last access time
-    await SecureStore.setItemAsync(LAST_ACCESS_KEY, Date.now().toString());
+    await storage.setItem(LAST_ACCESS_KEY, Date.now().toString());
 
     return token;
   } catch {
@@ -58,27 +87,23 @@ export const getAuthToken = async (): Promise<string | null> => {
   }
 };
 
-
-
-const SECURE_STORE_EMAIL_KEY = "userEmail";
-const SECURE_STORE_PASSWORD_KEY = "userPassword";
-
 export const removeAuthToken = async (): Promise<void> => {
   try {
     console.log("🧹 Removing auth token and credentials...");
 
-    // Delete main token from SecureStore
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    console.log(`✅ Deleted token from SecureStore (${TOKEN_KEY})`);
+    // Delete main token securely or via web fallback
+    await storage.removeItem(TOKEN_KEY);
+    console.log(`✅ Deleted token (${TOKEN_KEY})`);
 
     // Delete saved credentials
-    await SecureStore.deleteItemAsync(SECURE_STORE_EMAIL_KEY);
+    await storage.removeItem(SECURE_STORE_EMAIL_KEY);
     console.log(`✅ Deleted saved email (${SECURE_STORE_EMAIL_KEY})`);
-    await SecureStore.deleteItemAsync(SECURE_STORE_PASSWORD_KEY);
+
+    await storage.removeItem(SECURE_STORE_PASSWORD_KEY);
     console.log(`✅ Deleted saved password (${SECURE_STORE_PASSWORD_KEY})`);
 
     // Remove other stored keys from AsyncStorage
-    const authKeys = ["user_profile", "refresh_token", "telusmore_token", "telusmore_user"];
+    const authKeys = ["user_profile", "refresh_token", "telusmore_token", "telusmore_user", LAST_ACCESS_KEY];
     await AsyncStorage.multiRemove(authKeys);
     console.log(`✅ Cleared AsyncStorage keys: ${authKeys.join(", ")}`);
 

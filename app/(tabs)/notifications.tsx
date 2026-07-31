@@ -150,7 +150,7 @@ const NotificationsPage = () => {
       <View style={styles.header}>
         <View>
           <AppText type="bold" style={styles.headerTitle}>
-            Inbox
+            Notifications
           </AppText>
           <AppText style={styles.unreadSub}>
             {unreadCount} unread notifications

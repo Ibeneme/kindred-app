@@ -11,7 +11,12 @@ interface User {
     lastName: string;
     phone: string;
     dateOfBirth: string;
-    // add more fields as needed
+}
+
+interface LoginRejectValue {
+    message: string;
+    notVerified?: boolean;
+    email?: string;
 }
 
 interface AuthState {
@@ -20,37 +25,47 @@ interface AuthState {
     isAuthenticated: boolean;
     loading: boolean;
     error: string | null;
+    unverifiedEmail: string | null; // NEW: lets the UI redirect to OTP screen
 }
 
-// Initial state
 const initialState: AuthState = {
     user: null,
     token: null,
     isAuthenticated: false,
     loading: false,
     error: null,
+    unverifiedEmail: null,
 };
 
-// Async Thunks
-
 // Login
-export const login = createAsyncThunk(
+export const login = createAsyncThunk<
+    { token: string; user: any },
+    { email: string; password: string },
+    { rejectValue: LoginRejectValue }
+>(
     "auth/login",
-    async (
-        { email, password }: { email: string; password: string },
-        { rejectWithValue }
-    ) => {
+    async ({ email, password }, { rejectWithValue }) => {
         try {
             const response = await axiosInstance.post("/auth/login", {
                 email,
                 password,
             });
 
+            // Backend returns 202 for "account not verified" — axios treats
+            // this as success, so we must check it explicitly.
+            if (response.data?.isVerified === false) {
+                return rejectWithValue({
+                    message: response.data.message || "Account not verified",
+                    notVerified: true,
+                    email: response.data.email,
+                });
+            }
+
             const { token, user } = response.data;
 
-            // ✅ CONSOLE LOGS
-            console.log("LOGIN TOKEN:", token);
-            console.log("LOGIN USER:", user);
+            if (!token || !user) {
+                return rejectWithValue({ message: "Malformed login response" });
+            }
 
             if (token) {
                 await saveAuthToken(token);
@@ -66,8 +81,9 @@ export const login = createAsyncThunk(
                 },
             };
         } catch (err: any) {
-          console.warn(err, 'errrrrr')
-            return err;
+            // axiosInstance's interceptor rejects with { status, message, data }
+            const message = err?.message || "Login failed";
+            return rejectWithValue({ message });
         }
     }
 );
@@ -103,9 +119,9 @@ export const register = createAsyncThunk(
                 password,
             });
 
-            return { email }; // we'll use this to show "OTP sent" message
+            return { email };
         } catch (err: any) {
-            const message = err.response?.data?.message || "Registration failed";
+            const message = err?.message || "Registration failed";
             return rejectWithValue(message);
         }
     }
@@ -124,16 +140,9 @@ export const verifyOtp = createAsyncThunk(
                 otp,
             });
 
-            // Backend only returns a message
-            console.log("VERIFY OTP RESPONSE:", response.data);
-
-            return {
-                message: response.data.message,
-            };
+            return { message: response.data.message };
         } catch (err: any) {
-            const message =
-                err.response?.data?.message || "OTP verification failed";
-            console.error("VERIFY OTP ERROR:", message);
+            const message = err?.message || "OTP verification failed";
             return rejectWithValue(message);
         }
     }
@@ -147,7 +156,7 @@ export const resendOtp = createAsyncThunk(
             await axiosInstance.post("/auth/resend-otp", { email });
             return true;
         } catch (err: any) {
-            const message = err.response?.data?.message || "Failed to resend OTP";
+            const message = err?.message || "Failed to resend OTP";
             return rejectWithValue(message);
         }
     }
@@ -161,7 +170,7 @@ export const forgotPassword = createAsyncThunk(
             await axiosInstance.post("/auth/forgot-password", { email });
             return { email };
         } catch (err: any) {
-            const message = err.response?.data?.message || "Failed to send reset OTP";
+            const message = err?.message || "Failed to send reset OTP";
             return rejectWithValue(message);
         }
     }
@@ -182,19 +191,16 @@ export const resetPassword = createAsyncThunk(
             });
             return true;
         } catch (err: any) {
-            const message = err.response?.data?.message || "Password reset failed";
+            const message = err?.message || "Password reset failed";
             return rejectWithValue(message);
         }
     }
 );
 
 // Check auth state on app load
-export const checkAuth = createAsyncThunk("auth/checkAuth", async (_, { dispatch }) => {
+export const checkAuth = createAsyncThunk("auth/checkAuth", async () => {
     const token = await getAuthToken();
     if (token) {
-        // Optionally validate token with backend
-        // const { data } = await axiosInstance.get("/auth/me");
-        // return { user: data.user, token };
         return { token };
     }
     return null;
@@ -221,16 +227,21 @@ const authSlice = createSlice({
             .addCase(login.pending, (state) => {
                 state.loading = true;
                 state.error = null;
+                state.unverifiedEmail = null;
             })
             .addCase(login.fulfilled, (state, action) => {
                 state.loading = false;
                 state.isAuthenticated = true;
-                //  state.user = action.payload.user;
                 state.token = action.payload.token;
+                state.user = action.payload.user;
             })
             .addCase(login.rejected, (state, action) => {
                 state.loading = false;
-                state.error = action.payload as string;
+                state.isAuthenticated = false; // don't leave a stale true
+                state.error = action.payload?.message || "Login failed";
+                if (action.payload?.notVerified) {
+                    state.unverifiedEmail = action.payload.email || null;
+                }
             });
 
         // Register
@@ -241,7 +252,6 @@ const authSlice = createSlice({
             })
             .addCase(register.fulfilled, (state) => {
                 state.loading = false;
-                // Don't log in yet — wait for OTP verification
             })
             .addCase(register.rejected, (state, action) => {
                 state.loading = false;
@@ -254,10 +264,9 @@ const authSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(verifyOtp.fulfilled, (state, action) => {
+            .addCase(verifyOtp.fulfilled, (state) => {
                 state.loading = false;
                 state.isAuthenticated = true;
-
             })
             .addCase(verifyOtp.rejected, (state, action) => {
                 state.loading = false;
@@ -286,7 +295,6 @@ const authSlice = createSlice({
             if (action.payload?.token) {
                 state.isAuthenticated = true;
                 state.token = action.payload.token;
-                // You can fetch user profile here if needed
             }
         });
 

@@ -40,12 +40,12 @@ const InviteMembersPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // The instruction message telling them to download Kindred and use the specific code
+  // The instruction message telling them to download Kokohor Circle and use the specific code
   const inviteMessage = `Hey! I'm inviting you to join our family group "${
     familyName || "Family"
-  }" on the Kindred App. 
+  }" on the Kokohor Circle App. 
 
-1. Search for "Kindred" on the App Store or Play Store and download it.
+1. Search for "Kokohor Circle" on the App Store or Play Store and download it.
 2. Sign up and select "Join Family".
 3. Enter this Family Code to join: ${familyCode || familyId}
 

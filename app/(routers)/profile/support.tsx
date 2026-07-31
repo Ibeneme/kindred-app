@@ -37,7 +37,7 @@ const COLORS = {
 const SupportPage = () => {
   const router = useRouter();
 
-  const openEmail = () => Linking.openURL("mailto:support@kindred.family");
+  const openEmail = () => Linking.openURL("mailto:kokohorcircle@gmail.com");
   const openPhone = () => Linking.openURL("tel:18005463733");
 
   return (
@@ -81,7 +81,7 @@ const SupportPage = () => {
             <View style={styles.flexOne}>
               <AppText style={styles.cardLabel}>Email Support</AppText>
               <AppText type="bold" style={styles.cardValue}>
-                support@kindred.family
+              kokohorcircle@gmail.com
               </AppText>
             </View>
             <ChevronRight size={18} color={COLORS.slateLight} />
@@ -92,10 +92,10 @@ const SupportPage = () => {
               <Phone size={20} color={COLORS.primaryGold} />
             </View>
             <View style={styles.flexOne}>
-              <AppText style={styles.cardLabel}>Phone Line</AppText>
+              {/* <AppText style={styles.cardLabel}>Phone Line</AppText>
               <AppText type="bold" style={styles.cardValue}>
-                1-800-KINDRED
-              </AppText>
+                1-800-Kokohor
+              </AppText> */}
             </View>
             <ChevronRight size={18} color={COLORS.slateLight} />
           </TouchableOpacity>
