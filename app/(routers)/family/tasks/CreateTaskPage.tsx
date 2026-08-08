@@ -10,6 +10,7 @@ import {
   Modal,
   FlatList,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -56,7 +57,6 @@ const CreateTaskPage = () => {
           const response: any = await dispatch(
             getFamilyById(familyId)
           ).unwrap();
-          // Fixed path based on your console log
           if (response?.family?.members) {
             setFamilyMembers(response.family.members);
           }
@@ -89,7 +89,7 @@ const CreateTaskPage = () => {
 
   const onChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || date;
-    setShowPicker(Platform.OS === "ios"); // iOS keeps it open, Android closes it
+    setShowPicker(Platform.OS === "ios");
     setDate(currentDate);
   };
 
@@ -116,94 +116,104 @@ const CreateTaskPage = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <AppText style={styles.label}>TASK TITLE</AppText>
-        <TextInput
-          style={styles.input}
-          placeholder="What needs to be done?"
-          value={title}
-          onChangeText={setTitle}
-        />
-
-        <AppText style={styles.label}>ASSIGNED TO</AppText>
-        <TouchableOpacity
-          style={styles.selectorBtn}
-          onPress={() => setIsMemberModalVisible(true)}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <User size={18} color="#FBBF24" />
-            <AppText
-              style={{
-                marginLeft: 10,
-                color: assignedTo ? "#111827" : "#9CA3AF",
-              }}
-            >
-              {assignedTo ? assignedTo.name : "Select someone..."}
-            </AppText>
-          </View>
-          <ChevronDown size={18} color="#6B7280" />
-        </TouchableOpacity>
+          <AppText style={styles.label}>TASK TITLE</AppText>
+          <TextInput
+            style={styles.input}
+            placeholder="What needs to be done?"
+            value={title}
+            onChangeText={setTitle}
+          />
 
-        <AppText style={styles.label}>DEADLINE</AppText>
-        <View style={styles.dateTimeRow}>
+          <AppText style={styles.label}>ASSIGNED TO</AppText>
           <TouchableOpacity
-            style={[styles.selectorBtn, { flex: 1, marginRight: 10 }]}
-            onPress={() => showMode("date")}
+            style={styles.selectorBtn}
+            onPress={() => setIsMemberModalVisible(true)}
           >
-            <Calendar size={18} color="#FBBF24" />
-            <AppText style={{ marginLeft: 10 }}>
-              {date.toLocaleDateString()}
-            </AppText>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.selectorBtn, { flex: 1 }]}
-            onPress={() => showMode("time")}
-          >
-            <Clock size={18} color="#FBBF24" />
-            <AppText style={{ marginLeft: 10 }}>
-              {date.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </AppText>
-          </TouchableOpacity>
-        </View>
-
-        {showPicker && (
-          <View
-            style={Platform.OS === "ios" ? styles.iosPickerContainer : null}
-          >
-            <DateTimePicker
-              value={date}
-              mode={mode}
-              is24Hour={true}
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={onChange}
-              textColor="#111827"
-            />
-            {Platform.OS === "ios" && (
-              <TouchableOpacity
-                style={styles.doneBtn}
-                onPress={() => setShowPicker(false)}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <User size={18} color="#FBBF24" />
+              <AppText
+                style={{
+                  marginLeft: 10,
+                  color: assignedTo ? "#111827" : "#9CA3AF",
+                }}
               >
-                <AppText type="bold" style={{ color: "#FBBF24" }}>
-                  Done
-                </AppText>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+                {assignedTo ? assignedTo.name : "Select someone..."}
+              </AppText>
+            </View>
+            <ChevronDown size={18} color="#6B7280" />
+          </TouchableOpacity>
 
-        <AppText style={styles.label}>REPORT / DETAILS</AppText>
-        <TextInput
-          style={[styles.input, styles.textarea]}
-          placeholder="Add a long report here..."
-          value={details}
-          onChangeText={setDetails}
-          multiline
-        />
-      </ScrollView>
+          <AppText style={styles.label}>DEADLINE</AppText>
+          <View style={styles.dateTimeRow}>
+            <TouchableOpacity
+              style={[styles.selectorBtn, { flex: 1, marginRight: 10 }]}
+              onPress={() => showMode("date")}
+            >
+              <Calendar size={18} color="#FBBF24" />
+              <AppText style={{ marginLeft: 10 }}>
+                {date.toLocaleDateString()}
+              </AppText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.selectorBtn, { flex: 1 }]}
+              onPress={() => showMode("time")}
+            >
+              <Clock size={18} color="#FBBF24" />
+              <AppText style={{ marginLeft: 10 }}>
+                {date.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </AppText>
+            </TouchableOpacity>
+          </View>
+
+          {showPicker && (
+            <View
+              style={Platform.OS === "ios" ? styles.iosPickerContainer : null}
+            >
+              <DateTimePicker
+                value={date}
+                mode={mode}
+                is24Hour={true}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onChange}
+                textColor="#111827"
+              />
+              {Platform.OS === "ios" && (
+                <TouchableOpacity
+                  style={styles.doneBtn}
+                  onPress={() => setShowPicker(false)}
+                >
+                  <AppText type="bold" style={{ color: "#FBBF24" }}>
+                    Done
+                  </AppText>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          <AppText style={styles.label}>REPORT / DETAILS</AppText>
+          <TextInput
+            style={[styles.input, styles.textarea]}
+            placeholder="Add a long report here..."
+            value={details}
+            onChangeText={setDetails}
+            multiline
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Member Selector Modal */}
       <Modal visible={isMemberModalVisible} transparent animationType="fade">

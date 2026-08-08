@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  useMemo,
-  useRef,
-  useCallback,
-} from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   FlatList,
@@ -13,12 +7,8 @@ import {
   RefreshControl,
   Modal,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
   ActivityIndicator,
   Keyboard,
-  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -30,16 +20,20 @@ import {
   Trash2,
   Heart,
   MessageCircle,
-  AlertTriangle,
   Search,
   X,
   Send,
   UserCircle2,
-  CheckCircle,
-  Clock,
   User,
+  VideoOff,
+  Video as VideoIcon,
+  Image as ImageIcon,
+  Play,
 } from "lucide-react-native";
 import { Image } from "expo-image";
+import { VideoView, useVideoPlayer } from "expo-video";
+import { WebView } from "react-native-webview";
+
 import { AppText } from "@/src/ui/AppText";
 import { AppDispatch, RootState } from "@/src/redux/store";
 import {
@@ -59,6 +53,63 @@ const CARD_BG = "#FFFFFF";
 const TEXT_DARK = "#111827";
 const TEXT_GRAY = "#4B5563";
 
+// Helper function to extract raw video link string or null
+const extractRawVideoUrl = (item: any): string => {
+  return (
+    item?.videoUrl ||
+    item?.video?.url ||
+    (typeof item?.video === "string" ? item.video : "") ||
+    item?.videoLink ||
+    ""
+  );
+};
+
+// Helper function to validate URL format
+const validateVideoUrl = (possibleUrl: string): string | null => {
+  if (!possibleUrl || typeof possibleUrl !== "string") return null;
+
+  try {
+    const parsed = new URL(possibleUrl);
+    const validProtocol =
+      parsed.protocol === "http:" || parsed.protocol === "https:";
+    return validProtocol ? possibleUrl : null;
+  } catch {
+    return null;
+  }
+};
+
+// Helper to check if a URL is YouTube and convert it to an embed URL
+const getYouTubeEmbedUrl = (url: string): string | null => {
+  if (!url) return null;
+
+  const ytRegex =
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const match = url.match(ytRegex);
+
+  if (match && match[1]) {
+    return `https://www.youtube.com/embed/${match[1]}?autoplay=1&rel=0`;
+  }
+  return null;
+};
+
+// Component for native video playback (mp4, mov, etc.)
+const DirectVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
+  const player = useVideoPlayer(videoUrl, (p) => {
+    p.loop = false;
+  });
+
+  return (
+    <View style={styles.videoWrapper}>
+      <VideoView
+        player={player}
+        style={styles.videoPlayer}
+        allowsFullscreen
+        allowsPictureInPicture
+      />
+    </View>
+  );
+};
+
 export default function ContentListScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
@@ -76,9 +127,7 @@ export default function ContentListScreen() {
   const contentType = rawType as string;
   const canEdit = isOwner === "true";
 
-  const { contents, loading, error } = useSelector(
-    (s: RootState) => s.familyContent
-  );
+  const { contents, loading } = useSelector((s: RootState) => s.familyContent);
   const { user } = useSelector((state: RootState) => state.user);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,11 +140,17 @@ export default function ContentListScreen() {
   const [expandedDescriptions, setExpandedDescriptions] = useState<
     Record<string, boolean>
   >({});
+  const [activeMediaTab, setActiveMediaTab] = useState<
+    Record<string, "video" | "picture">
+  >({});
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [selectedZoomImage, setSelectedZoomImage] = useState<string | null>(
     null
   );
+
+  // State for Fullscreen YouTube WebView Modal
+  const [activeYouTubeUrl, setActiveYouTubeUrl] = useState<string | null>(null);
 
   const isPatriarch = contentType === "Patriarch";
   const isResolution = contentType === "Resolution";
@@ -149,6 +204,46 @@ export default function ContentListScreen() {
     }
   };
 
+  const renderVideoSection = (rawUrl: string) => {
+    const validUrl = validateVideoUrl(rawUrl);
+    if (!validUrl) {
+      return (
+        <View style={styles.invalidVideoBanner}>
+          <VideoOff size={18} color="#EF4444" />
+          <AppText style={styles.invalidVideoText}>
+            Video link not valid
+          </AppText>
+        </View>
+      );
+    }
+
+    const ytEmbedUrl = getYouTubeEmbedUrl(validUrl);
+
+    if (ytEmbedUrl) {
+      return (
+        <View style={styles.ytCardBanner}>
+          <View style={styles.ytBannerLeft}>
+            <VideoIcon size={20} color="#FF0000" />
+            <AppText type="bold" style={styles.ytBannerText}>
+              YouTube Video Available
+            </AppText>
+          </View>
+          <TouchableOpacity
+            style={styles.ytPlayBtn}
+            onPress={() => setActiveYouTubeUrl(ytEmbedUrl)}
+          >
+            <Play size={14} color="#FFFFFF" fill="#FFFFFF" />
+            <AppText type="bold" style={styles.ytPlayBtnText}>
+              Watch Video
+            </AppText>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return <DirectVideoPlayer videoUrl={validUrl} />;
+  };
+
   const renderItem = ({ item }: { item: any }) => {
     const isLiked =
       Array.isArray(item?.likes) && item.likes.includes(user?._id);
@@ -157,14 +252,18 @@ export default function ContentListScreen() {
     const comments = item?.comments || [];
     const displayComments = isCommExpanded ? comments : comments.slice(-2);
     const firstImg = item?.images?.[0]?.url;
-    const showThumbnail = showPhotos && firstImg;
-    const resStatus = item?.metadata?.resolutionStatus || "Pending";
+    const showThumbnail = Boolean(showPhotos && firstImg);
+
+    const rawVideoUrl = extractRawVideoUrl(item);
+    const hasVideoKey = Boolean(rawVideoUrl);
+
+    const currentTab = activeMediaTab[item._id] || "video";
+    const hasBothMedia = hasVideoKey && showThumbnail;
 
     return (
       <View style={styles.card}>
         {/* AUTHOR HEADER SECTION */}
         <View style={styles.authorContainer}>
-          {/* AUTHOR HEADER SECTION */}
           <View style={{ flexDirection: "row" }}>
             <View style={styles.avatarWrapper}>
               {item.creator?.profilePicture ? (
@@ -180,7 +279,7 @@ export default function ContentListScreen() {
               )}
             </View>
 
-            <View style={{}}>
+            <View>
               <AppText type="bold" style={styles.authorName}>
                 {item.creator?.firstName} {item.creator?.lastName}
               </AppText>
@@ -201,6 +300,7 @@ export default function ContentListScreen() {
                       contentType,
                       mode: "edit",
                       itemId: item._id,
+                      videoUrl: rawVideoUrl,
                     },
                   })
                 }
@@ -259,18 +359,96 @@ export default function ContentListScreen() {
           )}
         </View>
 
-        {showThumbnail && (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => setSelectedZoomImage(firstImg)}
-          >
-            <Image
-              source={{ uri: firstImg }}
-              style={styles.thumbnail}
-              contentFit="cover"
-              transition={300}
-            />
-          </TouchableOpacity>
+        {/* MEDIA TOGGLE SWITCH */}
+        {hasBothMedia && (
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                currentTab === "video" && styles.toggleBtnActive,
+              ]}
+              onPress={() =>
+                setActiveMediaTab((prev) => ({ ...prev, [item._id]: "video" }))
+              }
+            >
+              <VideoIcon
+                size={16}
+                color={currentTab === "video" ? "#111827" : GRAY}
+              />
+              <AppText
+                type="bold"
+                style={[
+                  styles.toggleText,
+                  currentTab === "video" && styles.toggleTextActive,
+                ]}
+              >
+                Video
+              </AppText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                currentTab === "picture" && styles.toggleBtnActive,
+              ]}
+              onPress={() =>
+                setActiveMediaTab((prev) => ({
+                  ...prev,
+                  [item._id]: "picture",
+                }))
+              }
+            >
+              <ImageIcon
+                size={16}
+                color={currentTab === "picture" ? "#111827" : GRAY}
+              />
+              <AppText
+                type="bold"
+                style={[
+                  styles.toggleText,
+                  currentTab === "picture" && styles.toggleTextActive,
+                ]}
+              >
+                Picture
+              </AppText>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* MEDIA DISPLAY */}
+        {hasBothMedia ? (
+          currentTab === "video" ? (
+            renderVideoSection(rawVideoUrl)
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setSelectedZoomImage(firstImg)}
+            >
+              <Image
+                source={{ uri: firstImg }}
+                style={styles.thumbnail}
+                contentFit="cover"
+                transition={300}
+              />
+            </TouchableOpacity>
+          )
+        ) : (
+          <>
+            {hasVideoKey && renderVideoSection(rawVideoUrl)}
+            {showThumbnail && !hasVideoKey && (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setSelectedZoomImage(firstImg)}
+              >
+                <Image
+                  source={{ uri: firstImg }}
+                  style={styles.thumbnail}
+                  contentFit="cover"
+                  transition={300}
+                />
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         <View style={styles.socialSection}>
@@ -426,6 +604,39 @@ export default function ContentListScreen() {
         <Plus size={32} color="#FFF" />
       </TouchableOpacity>
 
+      {/* FULLSCREEN YOUTUBE WEBVIEW MODAL */}
+      <Modal
+        visible={!!activeYouTubeUrl}
+        animationType="slide"
+        onRequestClose={() => setActiveYouTubeUrl(null)}
+      >
+        <SafeAreaView style={styles.fullscreenModalContainer}>
+          <View style={styles.fullscreenModalHeader}>
+            <AppText type="bold" style={styles.fullscreenModalTitle}>
+              YouTube Video
+            </AppText>
+            <TouchableOpacity
+              style={styles.fullscreenCloseBtn}
+              onPress={() => setActiveYouTubeUrl(null)}
+            >
+              <X size={24} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+          {activeYouTubeUrl && (
+            <WebView
+              style={styles.fullscreenWebView}
+              source={{ uri: activeYouTubeUrl }}
+              allowsFullscreenVideo
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* IMAGE ZOOM MODAL */}
       <Modal
         visible={!!selectedZoomImage}
         transparent={true}
@@ -450,6 +661,7 @@ export default function ContentListScreen() {
         </View>
       </Modal>
 
+      {/* DELETE CONFIRMATION MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -513,8 +725,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
-  // AUTHOR STYLES
   authorContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -532,7 +742,6 @@ const styles = StyleSheet.create({
   },
   authorName: { fontSize: 14, color: TEXT_DARK },
   datePosted: { fontSize: 11, color: GRAY },
-
   cardHeader: {
     marginBottom: 10,
     flexDirection: "row",
@@ -560,12 +769,130 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
+
+  // TOGGLE CONTAINER
+  toggleContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    padding: 4,
+    marginTop: 10,
+    marginBottom: 8,
+    gap: 4,
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  toggleBtnActive: {
+    backgroundColor: BRAND_YELLOW,
+  },
+  toggleText: {
+    fontSize: 13,
+    color: GRAY,
+  },
+  toggleTextActive: {
+    color: "#111827",
+  },
+
+  // YOUTUBE BANNER STYLES
+  ytCardBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 6,
+  },
+  ytBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  ytBannerText: {
+    fontSize: 13,
+    color: "#991B1B",
+  },
+  ytPlayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DC2626",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  ytPlayBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+  },
+
+  // FULLSCREEN MODAL STYLES
+  fullscreenModalContainer: {
+    flex: 1,
+    backgroundColor: "#000000",
+    paddingTop: 0,
+  },
+  fullscreenModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#111827",
+  },
+  fullscreenModalTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+  },
+  fullscreenCloseBtn: {
+    padding: 4,
+  },
+  fullscreenWebView: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+
   thumbnail: {
     width: "100%",
     height: 220,
     borderRadius: 12,
-    marginTop: 12,
+    marginTop: 6,
     backgroundColor: "#F3F4F6",
+  },
+  videoWrapper: {
+    width: "100%",
+    height: 220,
+    borderRadius: 12,
+    marginTop: 6,
+    overflow: "hidden",
+    backgroundColor: "#000000",
+  },
+  videoPlayer: {
+    width: "100%",
+    height: "100%",
+  },
+  invalidVideoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 6,
+    gap: 8,
+  },
+  invalidVideoText: {
+    color: "#991B1B",
+    fontSize: 13,
+    fontWeight: "600",
   },
   actionIcons: { flexDirection: "row", alignItems: "center" },
   socialSection: { marginTop: 12 },
@@ -598,7 +925,7 @@ const styles = StyleSheet.create({
   commentInput: { flex: 1, paddingVertical: 8, fontSize: 14 },
   fab: {
     position: "absolute",
-    bottom: 24,
+    bottom: 96,
     right: 24,
     backgroundColor: BRAND_YELLOW,
     width: 60,
@@ -656,7 +983,6 @@ const styles = StyleSheet.create({
   avatarWrapper: {
     marginRight: 10,
   },
-
   placeholderCircle: {
     alignItems: "center",
     justifyContent: "center",

@@ -3,19 +3,19 @@ import {
   View,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
-  Eye,
-  EyeOff,
   Mail,
   Lock,
   User,
@@ -23,6 +23,8 @@ import {
   Calendar,
   Hash,
   ChevronLeft,
+  Sparkles,
+  Check,
 } from "lucide-react-native";
 import { useDispatch } from "react-redux";
 
@@ -56,13 +58,21 @@ const AuthPage = () => {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  // UI & Local State (No Redux useSelector for loading/error)
+  // Active focus trackers
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
+  // UI State
   const [isLoading, setIsLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setShowPassword(false);
+  }, [view]);
 
   useEffect(() => {
     if (resendTimer > 0) {
@@ -84,16 +94,19 @@ const AuthPage = () => {
     return `${year}-${month}-${day}`;
   };
 
+  const openLink = (url: string) => {
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Error", "Could not open the link.")
+    );
+  };
+
   const handleSignIn = async () => {
     if (isLoading) return;
-
     if (!email.trim() || !password.trim()) {
       Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
-
     setIsLoading(true);
-
     try {
       const response = await axiosInstance.post("/auth/login", {
         email: email.trim(),
@@ -101,7 +114,6 @@ const AuthPage = () => {
       });
 
       const { token, user } = response.data;
-
       await saveAuthToken(token);
       const fullName = `${user.firstName} ${user.lastName}`;
       await AsyncStorage.setItem("userFullName", fullName);
@@ -140,7 +152,6 @@ const AuthPage = () => {
 
   const handleSignUp = async () => {
     if (isLoading) return;
-
     if (
       !email.trim() ||
       !password.trim() ||
@@ -152,9 +163,14 @@ const AuthPage = () => {
       Alert.alert("Missing fields", "Please fill all required fields");
       return;
     }
-
+    if (!agreedToTerms) {
+      Alert.alert(
+        "Terms Required",
+        "You must accept the Terms of Service and Privacy Policy to continue."
+      );
+      return;
+    }
     setIsLoading(true);
-
     try {
       const result = await dispatch(
         register({
@@ -166,9 +182,7 @@ const AuthPage = () => {
           password,
         })
       );
-
       setIsLoading(false);
-
       if (register.fulfilled.match(result)) {
         setView("otp");
       } else {
@@ -189,16 +203,12 @@ const AuthPage = () => {
       Alert.alert("Required", "Please enter the OTP code.");
       return;
     }
-
     setIsLoading(true);
-
     try {
       const result = await dispatch(
         verifyOtp({ email: email.trim(), otp: otp.trim() })
       );
-
       setIsLoading(false);
-
       if (verifyOtp.fulfilled.match(result)) {
         Alert.alert("Success", "Account verified! Please sign in.");
         setView("signin");
@@ -244,13 +254,10 @@ const AuthPage = () => {
     if (!email.trim()) {
       return Alert.alert("Required", "Please enter your email");
     }
-
     setIsLoading(true);
-
     try {
       const result = await dispatch(forgotPassword({ email: email.trim() }));
       setIsLoading(false);
-
       if (forgotPassword.fulfilled.match(result)) {
         setView("new_password");
       } else {
@@ -270,16 +277,12 @@ const AuthPage = () => {
     if (!otp || !password) {
       return Alert.alert("Required", "Fill in OTP and new password");
     }
-
     setIsLoading(true);
-
     try {
       const result = await dispatch(
         resetPassword({ email: email.trim(), otp, newPassword: password })
       );
-
       setIsLoading(false);
-
       if (resetPassword.fulfilled.match(result)) {
         Alert.alert("Success", "Password updated successfully");
         setView("signin");
@@ -304,10 +307,11 @@ const AuthPage = () => {
     <TouchableOpacity
       onPress={() => setView("signin")}
       style={styles.backButton}
+      activeOpacity={0.7}
     >
-      <ChevronLeft size={24} color="#EAB308" />
+      <ChevronLeft size={18} color="#64748B" />
       <AppText style={styles.backText} type="medium">
-        Back to Sign In
+        Back
       </AppText>
     </TouchableOpacity>
   );
@@ -321,99 +325,141 @@ const AuthPage = () => {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.formContainer}>
-            <View style={styles.logoContainer}>
-              <Image
-                source={kindredImage}
-                style={styles.logo}
-                contentFit="contain"
-                placeholder={{ blurhash: "L6PZfSi_.AyE_4t7t7R**0o#DgR4" }}
-              />
+          {/* TOP HERO BRANDING */}
+          <View style={styles.brandContainer}>
+            <Image
+              source={kindredImage}
+              style={styles.logo}
+              contentFit="contain"
+              placeholder={{ blurhash: "L6PZfSi_.AyE_4t7t7R**0o#DgR4" }}
+            />
+            <View style={styles.chip}>
+              <Sparkles size={12} color="#B45309" />
+              <AppText style={styles.chipText} type="bold">
+                FAMILY IS EVERYTHING
+              </AppText>
             </View>
+          </View>
 
+          {/* MAIN CARD */}
+          <View style={styles.card}>
             {/* VIEW: SIGN IN */}
             {view === "signin" && (
               <>
-                <AppText style={styles.formTitle} type="bold">
-                  Welcome back
-                </AppText>
-                <AppText style={styles.description} type="regular">
-                  Sign in to your Kokohor Circle account
-                </AppText>
+                <View style={styles.headerBlock}>
+                  <AppText style={styles.formTitle} type="bold">
+                    Welcome back
+                  </AppText>
+                  <AppText style={styles.description} type="regular">
+                    Enter your details to access your circle
+                  </AppText>
+                </View>
 
                 <View style={styles.inputGroup}>
                   <AppText style={styles.label} type="medium">
                     Email
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "email" && styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Mail
+                      size={18}
+                      color={focusedInput === "email" ? "#D97706" : "#94A3B8"}
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="Email address"
+                      placeholder="name@company.com"
                       keyboardType="email-address"
                       autoCapitalize="none"
                       value={email}
                       onChangeText={setEmail}
+                      onFocus={() => setFocusedInput("email")}
+                      onBlur={() => setFocusedInput(null)}
                     />
                   </View>
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <AppText style={styles.label} type="medium">
-                    Password
-                  </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View style={styles.labelRow}>
+                    <AppText style={styles.label} type="medium">
+                      Password
+                    </AppText>
+                    <TouchableOpacity onPress={() => setView("reset")}>
+                      <AppText style={styles.forgotText} type="medium">
+                        Forgot?
+                      </AppText>
+                    </TouchableOpacity>
+                  </View>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "password" && styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Lock
+                      size={18}
+                      color={
+                        focusedInput === "password" ? "#D97706" : "#94A3B8"
+                      }
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="Password"
+                      placeholder="••••••••"
                       secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
+                      onFocus={() => setFocusedInput("password")}
+                      onBlur={() => setFocusedInput(null)}
                     />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      style={styles.eyeIcon}
+                    <Pressable
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.togglePill}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      {showPassword ? (
-                        <EyeOff size={20} color="#6B7280" />
-                      ) : (
-                        <Eye size={20} color="#6B7280" />
-                      )}
-                    </TouchableOpacity>
+                      <AppText style={styles.togglePillText} type="bold">
+                        {showPassword ? "Hide" : "Show"}
+                      </AppText>
+                    </Pressable>
                   </View>
-                  <TouchableOpacity onPress={() => setView("reset")}>
-                    <AppText style={styles.forgotText} type="medium">
-                      Forgot password?
-                    </AppText>
-                  </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    isLoading && styles.buttonDisabled,
+                  ]}
                   onPress={handleSignIn}
                   disabled={isLoading}
+                  activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color="#0F172A" />
                   ) : (
-                    <AppText style={styles.buttonText} type="bold">
+                    <AppText style={styles.primaryButtonText} type="bold">
                       Sign In
                     </AppText>
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setView("signup")}>
+                <View style={styles.footerRow}>
                   <AppText style={styles.footerText} type="regular">
                     Don't have an account?{" "}
+                  </AppText>
+                  <TouchableOpacity onPress={() => setView("signup")}>
                     <AppText style={styles.linkText} type="bold">
                       Sign up
                     </AppText>
-                  </AppText>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
@@ -421,31 +467,43 @@ const AuthPage = () => {
             {view === "signup" && (
               <>
                 <BackButton />
-                <AppText style={styles.formTitle} type="bold">
-                  Create account
-                </AppText>
-                <AppText style={styles.description} type="regular">
-                  Join the Kokohor Circle community today
-                </AppText>
+                <View style={styles.headerBlock}>
+                  <AppText style={styles.formTitle} type="bold">
+                    Join the circle
+                  </AppText>
+                  <AppText style={styles.description} type="regular">
+                    Create your account and start building with family
+                  </AppText>
+                </View>
 
                 <View style={styles.row}>
                   <View style={styles.halfInput}>
                     <AppText style={styles.label} type="medium">
                       First Name
                     </AppText>
-                    <View style={styles.inputWrapper}>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === "firstName" &&
+                          styles.inputWrapperFocused,
+                      ]}
+                    >
                       <User
                         size={18}
-                        color="#9CA3AF"
+                        color={
+                          focusedInput === "firstName" ? "#D97706" : "#94A3B8"
+                        }
                         style={styles.inputIcon}
                       />
                       <TextInput
-                        placeholderTextColor={"#666"}
+                        placeholderTextColor="#94A3B8"
                         style={styles.input}
                         placeholder="First"
                         value={firstName}
                         onChangeText={setFirstName}
                         autoCapitalize="words"
+                        onFocus={() => setFocusedInput("firstName")}
+                        onBlur={() => setFocusedInput(null)}
                       />
                     </View>
                   </View>
@@ -453,14 +511,22 @@ const AuthPage = () => {
                     <AppText style={styles.label} type="medium">
                       Last Name
                     </AppText>
-                    <View style={styles.inputWrapper}>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === "lastName" &&
+                          styles.inputWrapperFocused,
+                      ]}
+                    >
                       <TextInput
-                        placeholderTextColor={"#666"}
+                        placeholderTextColor="#94A3B8"
                         style={styles.inputNoIcon}
                         placeholder="Last"
                         value={lastName}
                         onChangeText={setLastName}
                         autoCapitalize="words"
+                        onFocus={() => setFocusedInput("lastName")}
+                        onBlur={() => setFocusedInput(null)}
                       />
                     </View>
                   </View>
@@ -470,15 +536,26 @@ const AuthPage = () => {
                   <AppText style={styles.label} type="medium">
                     Phone Number
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Phone size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "phone" && styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Phone
+                      size={18}
+                      color={focusedInput === "phone" ? "#D97706" : "#94A3B8"}
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="080..."
+                      placeholder="0801 234 5678"
                       keyboardType="phone-pad"
                       value={phone}
                       onChangeText={setPhone}
+                      onFocus={() => setFocusedInput("phone")}
+                      onBlur={() => setFocusedInput(null)}
                     />
                   </View>
                 </View>
@@ -490,14 +567,18 @@ const AuthPage = () => {
                   <TouchableOpacity
                     onPress={() => setShowDatePicker(true)}
                     style={styles.dateInput}
+                    activeOpacity={0.7}
                   >
                     <Calendar
-                      size={20}
-                      color="#9CA3AF"
+                      size={18}
+                      color="#94A3B8"
                       style={{ marginRight: 10 }}
                     />
-                    <AppText style={styles.dateText} type="regular">
-                      {dob ? dob.toLocaleDateString() : "Tap to select date"}
+                    <AppText
+                      style={[styles.dateText, dob && styles.dateTextActive]}
+                      type="regular"
+                    >
+                      {dob ? dob.toLocaleDateString() : "Tap to pick date"}
                     </AppText>
                   </TouchableOpacity>
                   {showDatePicker && (
@@ -515,16 +596,30 @@ const AuthPage = () => {
                   <AppText style={styles.label} type="medium">
                     Email
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "signup_email" &&
+                        styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Mail
+                      size={18}
+                      color={
+                        focusedInput === "signup_email" ? "#D97706" : "#94A3B8"
+                      }
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="Email"
+                      placeholder="name@company.com"
                       keyboardType="email-address"
                       autoCapitalize="none"
                       value={email}
                       onChangeText={setEmail}
+                      onFocus={() => setFocusedInput("signup_email")}
+                      onBlur={() => setFocusedInput(null)}
                     />
                   </View>
                 </View>
@@ -533,38 +628,96 @@ const AuthPage = () => {
                   <AppText style={styles.label} type="medium">
                     Password
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "signup_password" &&
+                        styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Lock
+                      size={18}
+                      color={
+                        focusedInput === "signup_password"
+                          ? "#D97706"
+                          : "#94A3B8"
+                      }
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="Min 6 characters"
+                      placeholder="At least 6 characters"
                       secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
+                      onFocus={() => setFocusedInput("signup_password")}
+                      onBlur={() => setFocusedInput(null)}
                     />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      style={styles.eyeIcon}
+                    <Pressable
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.togglePill}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      {showPassword ? (
-                        <EyeOff size={20} color="#6B7280" />
-                      ) : (
-                        <Eye size={20} color="#6B7280" />
-                      )}
-                    </TouchableOpacity>
+                      <AppText style={styles.togglePillText} type="bold">
+                        {showPassword ? "Hide" : "Show"}
+                      </AppText>
+                    </Pressable>
                   </View>
                 </View>
 
+                {/* TERMS & PRIVACY CHECKBOX */}
+                <Pressable
+                  style={styles.termsRow}
+                  onPress={() => setAgreedToTerms((prev) => !prev)}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      agreedToTerms && styles.checkboxChecked,
+                    ]}
+                  >
+                    {agreedToTerms && (
+                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                    )}
+                  </View>
+                  <AppText style={styles.termsText} type="regular">
+                    I agree to the{" "}
+                    <AppText
+                      style={styles.termsLink}
+                      type="medium"
+                      onPress={() =>
+                        openLink("https://www.kokohorcircle.com/terms")
+                      }
+                    >
+                      Terms of Service
+                    </AppText>{" "}
+                    and{" "}
+                    <AppText
+                      style={styles.termsLink}
+                      type="medium"
+                      onPress={() =>
+                        openLink("https://www.kokohorcircle.com/privacy")
+                      }
+                    >
+                      Privacy Policy
+                    </AppText>
+                  </AppText>
+                </Pressable>
+
                 <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    (!agreedToTerms || isLoading) && styles.buttonDisabled,
+                  ]}
                   onPress={handleSignUp}
-                  disabled={isLoading}
+                  disabled={isLoading || !agreedToTerms}
+                  activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color="#0F172A" />
                   ) : (
-                    <AppText style={styles.buttonText} type="bold">
+                    <AppText style={styles.primaryButtonText} type="bold">
                       Create Account
                     </AppText>
                   )}
@@ -576,24 +729,42 @@ const AuthPage = () => {
             {view === "otp" && (
               <>
                 <BackButton />
-                <AppText style={styles.formTitle} type="bold">
-                  Verify Email
-                </AppText>
-                <AppText style={styles.description} type="regular">
-                  Enter code sent to {email}
-                </AppText>
+                <View style={styles.headerBlock}>
+                  <AppText style={styles.formTitle} type="bold">
+                    Check your inbox
+                  </AppText>
+                  <AppText style={styles.description} type="regular">
+                    We've emailed a verification code to{"\n"}
+                    <AppText style={styles.highlightText} type="medium">
+                      {email}
+                    </AppText>
+                  </AppText>
+                </View>
 
-                <View style={styles.inputWrapper}>
-                  <Hash size={20} color="#9CA3AF" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter OTP"
-                    keyboardType="number-pad"
-                    value={otp}
-                    onChangeText={setOtp}
-                    maxLength={6}
-                    placeholderTextColor={"#666"}
-                  />
+                <View style={styles.inputGroup}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "otp" && styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Hash
+                      size={18}
+                      color={focusedInput === "otp" ? "#D97706" : "#94A3B8"}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={[styles.input, styles.otpInput]}
+                      placeholder="000000"
+                      keyboardType="number-pad"
+                      value={otp}
+                      onChangeText={setOtp}
+                      maxLength={6}
+                      placeholderTextColor="#CBD5E1"
+                      onFocus={() => setFocusedInput("otp")}
+                      onBlur={() => setFocusedInput(null)}
+                    />
+                  </View>
                 </View>
 
                 <TouchableOpacity
@@ -609,21 +780,25 @@ const AuthPage = () => {
                     type="medium"
                   >
                     {resendTimer > 0
-                      ? `Resend code in ${resendTimer}s`
+                      ? `Resend available in ${resendTimer}s`
                       : "Resend Code"}
                   </AppText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    isLoading && styles.buttonDisabled,
+                  ]}
                   onPress={handleVerifyOtp}
                   disabled={isLoading}
+                  activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color="#0F172A" />
                   ) : (
-                    <AppText style={styles.buttonText} type="bold">
-                      Verify & Login
+                    <AppText style={styles.primaryButtonText} type="bold">
+                      Verify & Continue
                     </AppText>
                   )}
                 </TouchableOpacity>
@@ -634,38 +809,62 @@ const AuthPage = () => {
             {view === "reset" && (
               <>
                 <BackButton />
-                <AppText style={styles.formTitle} type="bold">
-                  Reset password
-                </AppText>
-                <AppText style={styles.description} type="regular">
-                  Enter email to receive reset code
-                </AppText>
-                <View style={styles.inputWrapper}>
-                  <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
-                  <TextInput
-                    placeholderTextColor={"#666"}
-                    style={styles.input}
-                    placeholder="Email"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
-                  />
+                <View style={styles.headerBlock}>
+                  <AppText style={styles.formTitle} type="bold">
+                    Reset password
+                  </AppText>
+                  <AppText style={styles.description} type="regular">
+                    Enter your email and we'll send you a code to regain access.
+                  </AppText>
                 </View>
+
+                <View style={styles.inputGroup}>
+                  <AppText style={styles.label} type="medium">
+                    Email Address
+                  </AppText>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "reset_email" &&
+                        styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Mail
+                      size={18}
+                      color={
+                        focusedInput === "reset_email" ? "#D97706" : "#94A3B8"
+                      }
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      placeholderTextColor="#94A3B8"
+                      style={styles.input}
+                      placeholder="name@company.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                      onFocus={() => setFocusedInput("reset_email")}
+                      onBlur={() => setFocusedInput(null)}
+                    />
+                  </View>
+                </View>
+
                 <TouchableOpacity
                   style={[
-                    styles.button,
-                    { marginTop: 20 },
+                    styles.primaryButton,
+                    { marginTop: 12 },
                     isLoading && styles.buttonDisabled,
                   ]}
                   onPress={handleForgotPassword}
                   disabled={isLoading}
+                  activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color="#0F172A" />
                   ) : (
-                    <AppText style={styles.buttonText} type="bold">
-                      Send Reset Code
+                    <AppText style={styles.primaryButtonText} type="bold">
+                      Send Instructions
                     </AppText>
                   )}
                 </TouchableOpacity>
@@ -676,61 +875,97 @@ const AuthPage = () => {
             {view === "new_password" && (
               <>
                 <BackButton />
-                <AppText style={styles.formTitle} type="bold">
-                  Set New Password
-                </AppText>
+                <View style={styles.headerBlock}>
+                  <AppText style={styles.formTitle} type="bold">
+                    Set New Password
+                  </AppText>
+                  <AppText style={styles.description} type="regular">
+                    Enter the code we sent plus a strong new password.
+                  </AppText>
+                </View>
+
                 <View style={styles.inputGroup}>
                   <AppText style={styles.label} type="medium">
-                    OTP Code
+                    Code (OTP)
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Hash size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "new_otp" && styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Hash
+                      size={18}
+                      color={focusedInput === "new_otp" ? "#D97706" : "#94A3B8"}
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
                       style={styles.input}
-                      placeholder="Code from email"
+                      placeholder="6-digit code"
                       keyboardType="number-pad"
                       value={otp}
                       onChangeText={setOtp}
+                      onFocus={() => setFocusedInput("new_otp")}
+                      onBlur={() => setFocusedInput(null)}
                     />
                   </View>
                 </View>
+
                 <View style={styles.inputGroup}>
                   <AppText style={styles.label} type="medium">
                     New Password
                   </AppText>
-                  <View style={styles.inputWrapper}>
-                    <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedInput === "new_password" &&
+                        styles.inputWrapperFocused,
+                    ]}
+                  >
+                    <Lock
+                      size={18}
+                      color={
+                        focusedInput === "new_password" ? "#D97706" : "#94A3B8"
+                      }
+                      style={styles.inputIcon}
+                    />
                     <TextInput
                       style={styles.input}
                       placeholder="New password"
                       secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
-                      placeholderTextColor={"#666"}
+                      placeholderTextColor="#94A3B8"
+                      onFocus={() => setFocusedInput("new_password")}
+                      onBlur={() => setFocusedInput(null)}
                     />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      style={styles.eyeIcon}
+                    <Pressable
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.togglePill}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      {showPassword ? (
-                        <EyeOff size={20} color="#6B7280" />
-                      ) : (
-                        <Eye size={20} color="#6B7280" />
-                      )}
-                    </TouchableOpacity>
+                      <AppText style={styles.togglePillText} type="bold">
+                        {showPassword ? "Hide" : "Show"}
+                      </AppText>
+                    </Pressable>
                   </View>
                 </View>
+
                 <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    isLoading && styles.buttonDisabled,
+                  ]}
                   onPress={handleCompleteReset}
                   disabled={isLoading}
+                  activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color="#0F172A" />
                   ) : (
-                    <AppText style={styles.buttonText} type="bold">
-                      Update Password
+                    <AppText style={styles.primaryButtonText} type="bold">
+                      Save & Sign In
                     </AppText>
                   )}
                 </TouchableOpacity>
@@ -744,85 +979,250 @@ const AuthPage = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FDFBF7" },
-  keyboardView: { flex: 1 },
-  scrollContent: { padding: 20, paddingTop: 40 },
-  formContainer: {},
-  formTitle: { fontSize: 26, color: "#111827", marginBottom: 6 },
-  description: { fontSize: 15, color: "#6B7280", marginBottom: 28 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F8F5F0", // soft warm cream
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 48,
+  },
+  brandContainer: {
+    alignItems: "center",
+    marginVertical: 18,
+  },
+  logo: {
+    height: 56,
+    width: 160,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 5,
+    marginTop: 10,
+  },
+  chipText: {
+    color: "#B45309",
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 26,
+    borderWidth: 1,
+    borderColor: "#E7E5E4",
+    shadowColor: "#78716C",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 6,
+  },
+  headerBlock: {
+    marginBottom: 22,
+  },
+  formTitle: {
+    fontSize: 26,
+    color: "#1C1917",
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  description: {
+    fontSize: 14,
+    color: "#78716C",
+    lineHeight: 21,
+  },
+  highlightText: {
+    color: "#D97706",
+  },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
-    marginLeft: -5,
+    marginBottom: 16,
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingRight: 8,
   },
-  backText: { color: "#EAB308", fontSize: 16, marginLeft: 4 },
-  inputGroup: { marginBottom: 18 },
-  row: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  halfInput: { flex: 1 },
-  label: { fontSize: 14, color: "#374151", marginBottom: 6 },
+  backText: {
+    color: "#64748B",
+    fontSize: 14,
+    marginLeft: 2,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  labelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  label: {
+    fontSize: 13,
+    color: "#44403C",
+    marginBottom: 7,
+  },
+  row: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  halfInput: {
+    flex: 1,
+  },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    backgroundColor: "#FAFAF9",
+    borderWidth: 1.5,
+    borderColor: "#E7E5E4",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    minHeight: 54,
   },
-  input: { flex: 1, paddingVertical: 14, fontSize: 16, color: "#111827" },
+  inputWrapperFocused: {
+    borderColor: "#D97706",
+    backgroundColor: "#FFFBEB",
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: "#1C1917",
+  },
+  otpInput: {
+    fontSize: 20,
+    letterSpacing: 6,
+    fontWeight: "600",
+  },
   inputNoIcon: {
     flex: 1,
     paddingVertical: 14,
-    fontSize: 16,
-    paddingHorizontal: 4,
+    fontSize: 15,
+    color: "#1C1917",
   },
-  inputIcon: { marginRight: 10 },
-  eyeIcon: { padding: 8 },
+  inputIcon: {
+    marginRight: 12,
+  },
+  togglePill: {
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+  },
+  togglePillText: {
+    color: "#B45309",
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
   dateInput: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    minHeight: 50,
+    backgroundColor: "#FAFAF9",
+    borderWidth: 1.5,
+    borderColor: "#E7E5E4",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    minHeight: 54,
   },
-  dateText: { fontSize: 16, color: "#374151" },
-  forgotText: {
-    color: "#EAB308",
-    fontSize: 14,
-    textAlign: "right",
-    marginTop: 8,
-  },
-  resendBtn: { marginTop: 15, marginBottom: 5, alignItems: "center" },
-  resendText: {
-    color: "#EAB308",
+  dateText: {
     fontSize: 15,
-    textDecorationLine: "underline",
+    color: "#94A3B8",
   },
-  resendDisabled: { color: "#9CA3AF", textDecorationLine: "none" },
-  button: {
-    backgroundColor: "#EAB308",
-    borderRadius: 10,
-    paddingVertical: 16,
+  dateTextActive: {
+    color: "#1C1917",
+  },
+  forgotText: {
+    color: "#D97706",
+    fontSize: 13,
+  },
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    marginTop: 4,
+    gap: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "#D6D3D1",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
+    marginTop: 1,
   },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#000", fontSize: 17 },
-  footerText: { marginTop: 24, fontSize: 15, color: "#6B7280" },
-  linkText: { color: "#EAB308" },
-  logoContainer: {
-    marginBottom: 30,
-    marginTop: 10,
+  checkboxChecked: {
+    backgroundColor: "#D97706",
+    borderColor: "#D97706",
   },
-  logo: {
-    height: 80,
-    width: 160,
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#78716C",
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: "#D97706",
+    textDecorationLine: "underline",
+  },
+  resendBtn: {
+    marginVertical: 12,
+    alignItems: "center",
+  },
+  resendText: {
+    color: "#D97706",
+    fontSize: 14,
+  },
+  resendDisabled: {
+    color: "#A8A29E",
+  },
+  primaryButton: {
+    backgroundColor: "#EAB308",
+    borderRadius: 16,
+    paddingVertical: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+    shadowColor: "#EAB308",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    color: "#0F172A",
+    fontSize: 16,
+    letterSpacing: 0.2,
+  },
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+  },
+  footerText: {
+    fontSize: 14,
+    color: "#78716C",
+  },
+  linkText: {
+    color: "#D97706",
+    fontSize: 14,
   },
 });
 

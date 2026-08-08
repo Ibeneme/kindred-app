@@ -9,6 +9,8 @@ import {
   TextInput,
   Share,
   Clipboard,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,7 +35,7 @@ const InviteMembersPage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
 
-  // (Edit 17) Extract familyCode from params
+  // Extract familyCode from params
   const { familyId, isOwner, familyName, familyCode } = useLocalSearchParams();
   const userIsOwner = isOwner === "true";
 
@@ -88,106 +90,115 @@ See you there!`;
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.iconCircle}
-        >
-          <ChevronLeft size={22} color="#111827" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <AppText type="bold" style={styles.headerTitle}>
-            Invite Member
-          </AppText>
-          <AppText style={styles.headerSubtitle}>{familyName}</AppText>
-        </View>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollBody}>
-        <View style={styles.guideContainer}>
-          <Info size={18} color="#1E40AF" />
-          <AppText style={styles.guideText}>
-            Share the family code below with your relatives so they can join
-            this group.
-          </AppText>
-        </View>
-
-        {/* Display the Code for the Admin */}
-        <View style={styles.codeDisplayBox}>
-          <Hash size={16} color="#64748B" />
-          <AppText style={styles.codeLabel}>FAMILY CODE: </AppText>
-          <AppText type="bold" style={styles.codeValue}>
-            {familyCode || familyId}
-          </AppText>
-        </View>
-
-        <View style={styles.section}>
-          <AppText type="bold" style={styles.sectionLabel}>
-            Invite via Social Apps
-          </AppText>
-
-          <View style={styles.shareActionsRow}>
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: "#111827" }]}
-              onPress={handleShareInvite}
-            >
-              <Share2 size={24} color="#FFF" />
-              <AppText style={styles.actionCardText}>Share Code & Link</AppText>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: "#EAB308" }]}
-              onPress={copyToClipboard}
-            >
-              <Copy size={24} color="#FFF" />
-              <AppText style={styles.actionCardText}>Copy Instructions</AppText>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.divider}>
-          <View style={styles.line} />
-          <AppText style={styles.dividerText}>OR INVITE BY EMAIL</AppText>
-          <View style={styles.line} />
-        </View>
-
-        <View style={styles.searchBar}>
-          <Search size={18} color="#94A3B8" />
-          <TextInput
-            placeholder="Enter email address..."
-            style={styles.input}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-        </View>
-
-        {searchQuery.includes("@") && (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.inviteCard}
-            onPress={handleInvite}
-            disabled={isSaving}
+            onPress={() => router.back()}
+            style={styles.iconCircle}
           >
-            {isSaving ? (
-              <ActivityIndicator color="#EAB308" />
-            ) : (
-              <>
-                <MailPlus size={28} color="#EAB308" />
-                <View style={{ flex: 1, marginLeft: 16 }}>
-                  <AppText type="bold" style={styles.inviteTitle}>
-                    Invite "{searchQuery.trim()}"
-                  </AppText>
-                  <AppText style={styles.inviteSubtitle}>
-                    Send via email
-                  </AppText>
-                </View>
-              </>
-            )}
+            <ChevronLeft size={22} color="#111827" />
           </TouchableOpacity>
-        )}
-      </ScrollView>
+          <View style={styles.headerTitleContainer}>
+            <AppText type="bold" style={styles.headerTitle}>
+              Invite Member
+            </AppText>
+            <AppText style={styles.headerSubtitle}>{familyName}</AppText>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollBody}>
+          <View style={styles.guideContainer}>
+            <Info size={18} color="#1E40AF" />
+            <AppText style={styles.guideText}>
+              Share the family code below with your relatives so they can join
+              this group.
+            </AppText>
+          </View>
+
+          {/* Display the Code for the Admin */}
+          <View style={styles.codeDisplayBox}>
+            <Hash size={16} color="#64748B" />
+            <AppText style={styles.codeLabel}>FAMILY CODE: </AppText>
+            <AppText type="bold" style={styles.codeValue}>
+              {familyCode || familyId}
+            </AppText>
+          </View>
+
+          <View style={styles.section}>
+            <AppText type="bold" style={styles.sectionLabel}>
+              Invite via Social Apps
+            </AppText>
+
+            <View style={styles.shareActionsRow}>
+              <TouchableOpacity
+                style={[styles.actionCard, { backgroundColor: "#111827" }]}
+                onPress={handleShareInvite}
+              >
+                <Share2 size={24} color="#FFF" />
+                <AppText style={styles.actionCardText}>
+                  Share Code & Link
+                </AppText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionCard, { backgroundColor: "#EAB308" }]}
+                onPress={copyToClipboard}
+              >
+                <Copy size={24} color="#FFF" />
+                <AppText style={styles.actionCardText}>
+                  Copy Instructions
+                </AppText>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.divider}>
+            <View style={styles.line} />
+            <AppText style={styles.dividerText}>OR INVITE BY EMAIL</AppText>
+            <View style={styles.line} />
+          </View>
+
+          <View style={styles.searchBar}>
+            <Search size={18} color="#94A3B8" />
+            <TextInput
+              placeholder="Enter email address..."
+              style={styles.input}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+
+          {searchQuery.includes("@") && (
+            <TouchableOpacity
+              style={styles.inviteCard}
+              onPress={handleInvite}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#EAB308" />
+              ) : (
+                <>
+                  <MailPlus size={28} color="#EAB308" />
+                  <View style={{ flex: 1, marginLeft: 16 }}>
+                    <AppText type="bold" style={styles.inviteTitle}>
+                      Invite "{searchQuery.trim()}"
+                    </AppText>
+                    <AppText style={styles.inviteSubtitle}>
+                      Send via email
+                    </AppText>
+                  </View>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

@@ -41,27 +41,21 @@ import { AppDispatch, RootState } from "@/src/redux/store";
 import { fetchNotifications } from "@/src/redux/slices/notificationSlice";
 
 const { width } = Dimensions.get("window");
-const GRID_SPACING = 16;
+const GRID_SPACING = 14;
 const COLUMN_WIDTH = (width - 48 - GRID_SPACING) / 2;
 
 const COLORS = {
   primary: "#FFE66D",
-  black: "#000000",
+  black: "#111827",
   background: "#FFFFFF",
   surface: "#F8FAFC",
   border: "#E2E8F0",
   textGrey: "#64748B",
   unread: "#EF4444",
+  muted: "#94A3B8",
 };
 
-// 🎨 VIBRANT FAMILY PALETTE
-const FAMILY_COLORS = [
-  "#A855F7", // Purple
-  "#EC4899", // Pink
-  "#F97316", // Orange
-  "#3B82F6", // Blue
-  "#10B981", // Green
-];
+const FAMILY_COLORS = ["#A855F7", "#EC4899", "#F97316", "#3B82F6", "#10B981"];
 
 const LoadingModal = ({ visible }: { visible: boolean }) => (
   <Modal transparent visible={visible} animationType="fade">
@@ -88,7 +82,6 @@ const HomePage = () => {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
   const [localSearch, setLocalSearch] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [isSearchingCode, setIsSearchingCode] = useState(false);
@@ -116,7 +109,7 @@ const HomePage = () => {
       setCurrentQuote("Your heritage preservation starts here.");
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 700,
         useNativeDriver: true,
       }).start();
     }, [])
@@ -153,6 +146,7 @@ const HomePage = () => {
       <LoadingModal visible={isSyncing && !families.length} />
 
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+        {/* ── Header ── */}
         <View style={styles.header}>
           <View>
             <AppText style={styles.brandTag} type="bold">
@@ -162,7 +156,7 @@ const HomePage = () => {
               <AppText type="bold" style={styles.userName}>
                 {user?.firstName || "Hello"}
               </AppText>
-              <Crown size={18} color={COLORS.black} style={{ marginLeft: 6 }} />
+              <Crown size={16} color={COLORS.black} style={{ marginLeft: 6 }} />
             </View>
           </View>
 
@@ -170,19 +164,21 @@ const HomePage = () => {
             <TouchableOpacity
               style={styles.headerBtn}
               onPress={() => setIsGridView(!isGridView)}
+              activeOpacity={0.7}
             >
               {isGridView ? (
-                <List size={22} color={COLORS.black} />
+                <List size={20} color={COLORS.black} />
               ) : (
-                <LayoutGrid size={22} color={COLORS.black} />
+                <LayoutGrid size={20} color={COLORS.black} />
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.headerBtn, styles.notifBtn]}
               onPress={() => router.push("/(tabs)/notifications")}
+              activeOpacity={0.7}
             >
-              <Bell size={22} color={COLORS.black} />
+              <Bell size={20} color={COLORS.black} />
               {globalNotificationsCount > 0 && (
                 <View style={styles.notifBadge} />
               )}
@@ -201,72 +197,86 @@ const HomePage = () => {
             />
           }
         >
+          {/* ── Quote ── */}
           <View style={styles.quoteBox}>
-            <Sparkles size={16} color={COLORS.black} />
+            <View style={styles.quoteIcon}>
+              <Sparkles size={14} color={COLORS.black} />
+            </View>
             <AppText style={styles.quoteText} type="medium">
-              {currentQuote.toUpperCase()}
+              {currentQuote}
             </AppText>
           </View>
 
-          <View style={styles.searchSection}>
-            <View style={styles.searchLabelRow}>
+          {/* ── Join by Invite ── */}
+          <View style={styles.section}>
+            <View style={styles.sectionLabelRow}>
               <ShieldCheck size={14} color={COLORS.black} />
-              <AppText type="bold" style={styles.searchLabel}>
-                JOIN BY INVITE CODE
+              <AppText type="bold" style={styles.sectionLabel}>
+                Join by Invite Code
               </AppText>
             </View>
-            <View style={styles.inviteInputRow}>
-              <Hash size={20} color={COLORS.textGrey} />
-              <TextInput
-                placeholder="INVITE CODE"
-                style={styles.inviteInput}
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                placeholderTextColor={COLORS.textGrey}
-                autoCapitalize="characters"
-              />
+
+            <View style={styles.inviteRow}>
+              <View style={styles.inviteInputWrap}>
+                <Hash size={18} color={COLORS.muted} />
+                <TextInput
+                  placeholder="Enter invite code"
+                  style={styles.inviteInput}
+                  value={inviteCode}
+                  onChangeText={setInviteCode}
+                  placeholderTextColor={COLORS.muted}
+                  autoCapitalize="characters"
+                />
+              </View>
               <TouchableOpacity
                 style={styles.inviteGoBtn}
                 onPress={handleJoinByCode}
+                activeOpacity={0.85}
               >
                 {isSearchingCode ? (
                   <ActivityIndicator size="small" color={COLORS.black} />
                 ) : (
-                  <ArrowRight size={22} color={COLORS.black} />
+                  <ArrowRight size={20} color={COLORS.black} />
                 )}
               </TouchableOpacity>
             </View>
           </View>
 
+          {/* ── Create Family ── */}
           <TouchableOpacity
-            style={styles.createFamilyBtn}
+            style={styles.createBtn}
             onPress={() => router.push("/(routers)/family/CreateFamily")}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <View style={styles.createIconBox}>
-              <Plus size={24} color={COLORS.black} />
+            <View style={styles.createLeft}>
+              <View style={styles.createIconBox}>
+                <Plus size={20} color={COLORS.black} />
+              </View>
+              <AppText type="bold" style={styles.createBtnText}>
+                Start a New Family Circle
+              </AppText>
             </View>
-            <AppText type="bold" style={styles.createBtnText}>
-              START A NEW FAMILY CIRCLE
-            </AppText>
-            <Fingerprint size={20} color={COLORS.black} />
+            <Fingerprint size={18} color={COLORS.primary} />
           </TouchableOpacity>
 
+          {/* ── List Header ── */}
           <View style={styles.listHeader}>
             <AppText type="bold" style={styles.listTitle}>
-              YOUR FAMILY CIRCLES
+              Your Family Circles
             </AppText>
             <View style={styles.filterBox}>
-              <Search size={14} color={COLORS.textGrey} />
+              <Search size={14} color={COLORS.muted} />
               <TextInput
-                placeholder="FILTER"
-                style={styles.filterText}
+                placeholder="Filter"
+                style={styles.filterInput}
                 value={localSearch}
                 onChangeText={setLocalSearch}
+                placeholderTextColor={COLORS.muted}
               />
             </View>
           </View>
 
+          {/* ── Family Cards ── */}
           <View
             style={isGridView ? styles.gridContainer : styles.listContainer}
           >
@@ -281,13 +291,13 @@ const HomePage = () => {
                   key={item._id}
                   style={isGridView ? styles.gridCard : styles.listCard}
                   onPress={() => router.push(`/(routers)/family/${item._id}`)}
-                  activeOpacity={0.7}
+                  activeOpacity={0.75}
                 >
-                  <View style={styles.cardInfo}>
+                  <View style={styles.cardBody}>
                     <View style={styles.cardTop}>
                       <View
                         style={[
-                          styles.colorIndicator,
+                          styles.colorDot,
                           { backgroundColor: familyColor },
                         ]}
                       />
@@ -307,10 +317,10 @@ const HomePage = () => {
                       )}
                     </View>
 
-                    <View style={styles.cardBottom}>
-                      <View style={styles.meta}>
-                        <Users size={12} color={familyColor} />
-                        <AppText style={styles.metaValue}>
+                    <View style={styles.cardMeta}>
+                      <View style={styles.metaItem}>
+                        <Users size={13} color={familyColor} />
+                        <AppText style={styles.metaText}>
                           {item.members?.length || 0}
                         </AppText>
                       </View>
@@ -318,17 +328,25 @@ const HomePage = () => {
                         style={[styles.typeText, { color: familyColor }]}
                         numberOfLines={1}
                       >
-                        • {item.familyType}
+                        {item.familyType}
                       </AppText>
                     </View>
                   </View>
+
                   {!isGridView && (
-                    <ChevronRight size={22} color={COLORS.border} />
+                    <ChevronRight size={20} color={COLORS.border} />
                   )}
                 </TouchableOpacity>
               );
             })}
           </View>
+
+          {filteredFamilies.length === 0 && (
+            <View style={styles.emptyState}>
+              <Users size={32} color={COLORS.muted} />
+              <AppText style={styles.emptyText}>No family circles yet</AppText>
+            </View>
+          )}
         </ScrollView>
       </Animated.View>
     </SafeAreaView>
@@ -336,176 +354,311 @@ const HomePage = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     justifyContent: "center",
     alignItems: "center",
   },
   loaderContainer: {
     alignItems: "center",
     backgroundColor: COLORS.black,
-    padding: 30,
+    paddingVertical: 28,
+    paddingHorizontal: 36,
     borderRadius: 20,
   },
   loaderText: {
     color: COLORS.primary,
-    marginTop: 15,
-    fontSize: 10,
-    letterSpacing: 2,
+    marginTop: 14,
+    fontSize: 11,
+    letterSpacing: 1.5,
   },
+
+  // Header
   header: {
     paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  brandTag: { fontSize: 10, color: COLORS.black, letterSpacing: 4 },
-  userGreet: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  userName: { fontSize: 24, color: COLORS.black },
-  headerActions: { flexDirection: "row", gap: 12 },
+  brandTag: {
+    fontSize: 11,
+    color: COLORS.muted,
+    letterSpacing: 3,
+    textTransform: "uppercase",
+  },
+  userGreet: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  userName: {
+    fontSize: 26,
+    color: COLORS.black,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
   headerBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: COLORS.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  notifBtn: { position: "relative" },
+  notifBtn: {
+    position: "relative",
+  },
   notifBadge: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 10,
+    right: 10,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: COLORS.unread,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: COLORS.surface,
   },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
+
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+  },
+
+  // Quote
   quoteBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginVertical: 20,
-    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 28,
+    gap: 12,
   },
-  quoteText: { fontSize: 10, color: COLORS.black, flex: 1, letterSpacing: 1 },
-  searchSection: { marginBottom: 25 },
-  searchLabelRow: {
+  quoteIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quoteText: {
+    fontSize: 13,
+    color: COLORS.black,
+    flex: 1,
+    lineHeight: 18,
+  },
+
+  // Sections
+  section: {
+    marginBottom: 20,
+  },
+  sectionLabelRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginBottom: 10,
   },
-  searchLabel: { fontSize: 10, color: COLORS.black, letterSpacing: 2 },
-  inviteInputRow: {
+  sectionLabel: {
+    fontSize: 12,
+    color: COLORS.black,
+    letterSpacing: 0.3,
+  },
+
+  // Invite
+  inviteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  inviteInputWrap: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
     borderRadius: 16,
-    paddingLeft: 16,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
+    height: 52,
   },
   inviteInput: {
     flex: 1,
-    paddingVertical: 14,
     marginLeft: 10,
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.black,
-    letterSpacing: 1,
   },
   inviteGoBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: COLORS.primary,
-    padding: 10,
-    borderRadius: 12,
-    margin: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  createFamilyBtn: {
+
+  // Create Button
+  createBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.black,
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 35,
     justifyContent: "space-between",
+    backgroundColor: COLORS.black,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    marginBottom: 32,
+  },
+  createLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
   },
   createIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
-    padding: 6,
-    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  createBtnText: { color: COLORS.primary, fontSize: 14, letterSpacing: 1 },
+  createBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+  },
+
+  // List Header
   listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 15,
+    marginBottom: 14,
   },
-  listTitle: { fontSize: 12, color: COLORS.black, letterSpacing: 2 },
+  listTitle: {
+    fontSize: 13,
+    color: COLORS.black,
+  },
   filterBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
-    borderRadius: 10,
-    width: "45%",
-    height: 34,
+    borderRadius: 12,
+    height: 36,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minWidth: 120,
   },
-  filterText: { flex: 1, fontSize: 11, marginLeft: 6 },
-  listContainer: { gap: 12 },
+  filterInput: {
+    flex: 1,
+    fontSize: 13,
+    marginLeft: 6,
+    color: COLORS.black,
+    paddingVertical: 0,
+  },
+
+  // Cards
+  listContainer: {
+    gap: 12,
+  },
   listCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
-    padding: 18,
-    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  gridContainer: { flexDirection: "row", flexWrap: "wrap", gap: GRID_SPACING },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: GRID_SPACING,
+  },
   gridCard: {
     width: COLUMN_WIDTH,
     backgroundColor: COLORS.surface,
     padding: 16,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
-    height: 130,
-    justifyContent: "space-between",
+    minHeight: 120,
   },
-  cardInfo: { flex: 1 },
+  cardBody: {
+    flex: 1,
+  },
   cardTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  colorIndicator: { width: 12, height: 12, borderRadius: 4, marginRight: 8 },
-  cardName: { fontSize: 15, color: COLORS.black, flex: 1 },
+  colorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  cardName: {
+    fontSize: 15,
+    color: COLORS.black,
+    flex: 1,
+  },
   unreadBadge: {
     backgroundColor: COLORS.black,
-    paddingHorizontal: 6,
-    height: 18,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    height: 20,
+    borderRadius: 8,
     justifyContent: "center",
+    marginLeft: 8,
   },
-  unreadText: { color: COLORS.primary, fontSize: 9 },
-  cardBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
-  meta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaValue: { fontSize: 12, color: COLORS.black, fontWeight: "bold" },
-  typeText: { fontSize: 11, fontWeight: "bold" },
+  unreadText: {
+    color: COLORS.primary,
+    fontSize: 10,
+  },
+  cardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 13,
+    color: COLORS.black,
+    fontWeight: "600",
+  },
+  typeText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Empty
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 48,
+    gap: 12,
+  },
+  emptyText: {
+    color: COLORS.muted,
+    fontSize: 14,
+  },
 });
 
 export default HomePage;

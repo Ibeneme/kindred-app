@@ -26,8 +26,8 @@ export interface Conversation {
   _id: string; // This is the roomUuid
   lastMessage: string;
   timestamp: string;
-  senderName: string; // Now correctly represents the 'Other Person'
-  senderId: string; // Now correctly represents the 'Other Person'
+  senderName: string; // Represents the 'Other Person'
+  senderId: string; // Represents the 'Other Person'
   receiverId: string; // Usually the current user
   unreadCount: number;
   profilePicture?: string;
@@ -53,9 +53,16 @@ const InboxScreen = () => {
     }
   }, [socket, user?._id]);
 
+  // Initial fetch and 1-minute silent polling setup on screen focus
   useFocusEffect(
     useCallback(() => {
       fetchConversations();
+
+      const intervalId = setInterval(() => {
+        fetchConversations();
+      }, 60000); // 1 minute interval
+
+      return () => clearInterval(intervalId);
     }, [fetchConversations])
   );
 
@@ -77,7 +84,6 @@ const InboxScreen = () => {
         );
         const updatedList = [...prev];
 
-        // Determine the 'Other Person' details for the UI
         const isMeSender = updatedConv.senderId === user._id;
         const chatPartnerName = isMeSender
           ? "Family Member"
@@ -129,14 +135,13 @@ const InboxScreen = () => {
   }, [searchQuery, conversations, isFilterActive]);
 
   const handleConversationPress = (item: Conversation) => {
-    // Navigation logic: item.senderId is now guaranteed to be the other person by the backend logic
     router.push({
       pathname: "/(routers)/messages/chat",
       params: {
         uuid: item._id,
         senderId: user?._id,
         senderName: `${user?.firstName} ${user?.lastName}`,
-        receiverId: item.senderId, // The other person
+        receiverId: item.senderId,
         receiverName: item.senderName,
         receiverProfilePicture: item.profilePicture || "",
       },
@@ -255,7 +260,10 @@ const InboxScreen = () => {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={fetchConversations}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchConversations();
+              }}
               tintColor="#EAB308"
             />
           }

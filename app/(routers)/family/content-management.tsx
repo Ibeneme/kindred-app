@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
   editBtn: { padding: 6, backgroundColor: "#EFF6FF", borderRadius: 8 },
   fab: {
     position: "absolute",
-    bottom: 32,
+    bottom: 96,
     right: 24,
     backgroundColor: "#EAB308",
     width: 64,

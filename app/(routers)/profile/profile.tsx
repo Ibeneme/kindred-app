@@ -114,9 +114,9 @@ const UserProfilePage = () => {
           <AppText type="bold" style={styles.headerTitle}>
             Profile Details
           </AppText>
-          <TouchableOpacity style={styles.headerBtn}>
+          {/* <TouchableOpacity style={styles.headerBtn}>
             <Share2 size={20} color="#1E293B" />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         <ScrollView
@@ -177,9 +177,6 @@ const UserProfilePage = () => {
                     Send Message
                   </AppText>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.callBtn}>
-                  <Phone size={20} color="#1E293B" />
-                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -191,16 +188,20 @@ const UserProfilePage = () => {
               label="Email Address"
               value={profileData.email}
             />
-            <DetailItem
-              icon={<Phone size={20} color={PRIMARY_GOLD} />}
-              label="Phone Number"
-              value={profileData.phone || "Not shared"}
-            />
-            <DetailItem
-              icon={<Cake size={20} color={PRIMARY_GOLD} />}
-              label="Birthday"
-              value={profileData.dateOfBirth || "N/A"}
-            />
+            {profileData.phone ? (
+              <DetailItem
+                icon={<Phone size={20} color={PRIMARY_GOLD} />}
+                label="Phone Number"
+                value={profileData.phone}
+              />
+            ) : null}
+            {profileData.dateOfBirth ? (
+              <DetailItem
+                icon={<Cake size={20} color={PRIMARY_GOLD} />}
+                label="Birthday"
+                value={profileData.dateOfBirth}
+              />
+            ) : null}
             <DetailItem
               icon={<Shield size={20} color={PRIMARY_GOLD} />}
               label="Verification Status"
@@ -211,15 +212,17 @@ const UserProfilePage = () => {
               }
               isVerified={profileData.isVerified}
             />
-            <DetailItem
-              icon={<Calendar size={20} color={PRIMARY_GOLD} />}
-              label="Joined On"
-              value={new Date(profileData.createdAt).toLocaleDateString(
-                "en-US",
-                { month: "long", year: "numeric", day: "numeric" }
-              )}
-              isLast
-            />
+            {profileData.createdAt ? (
+              <DetailItem
+                icon={<Calendar size={20} color={PRIMARY_GOLD} />}
+                label="Joined On"
+                value={new Date(profileData.createdAt).toLocaleDateString(
+                  "en-US",
+                  { month: "long", year: "numeric", day: "numeric" }
+                )}
+                isLast
+              />
+            ) : null}
           </View>
 
           {/* System Footer */}
@@ -368,16 +371,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   msgBtnText: { color: "#FFF", fontSize: 15 },
-  callBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: "#F8FAFC",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
 
   detailsCard: {
     backgroundColor: "#FFF",

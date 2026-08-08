@@ -1,4 +1,10 @@
-import React, { useEffect, useCallback, useState, useMemo } from "react";
+import React, {
+  useEffect,
+  useCallback,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   FlatList,
@@ -32,7 +38,6 @@ import {
   markAllAsRead,
 } from "@/src/redux/slices/notificationSlice";
 import { formatDistanceToNow } from "date-fns";
-import { useGlobalSpinner } from "@/src/hooks/useGlobalSpinner";
 
 const getTypeLabel = (type: string) => {
   const labels: Record<string, string> = {
@@ -71,20 +76,110 @@ const getNotificationIcon = (type: string) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// Shimmer components
+// ─────────────────────────────────────────────
+const ShimmerBlock = ({
+  width,
+  height,
+  style,
+}: {
+  width: number | string;
+  height: number;
+  style?: any;
+}) => {
+  const anim = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 0.3,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width,
+          height,
+          backgroundColor: "#E2E8F0",
+          borderRadius: 8,
+          opacity: anim,
+        },
+        style,
+      ]}
+    />
+  );
+};
+
+const NotificationShimmer = () => (
+  <View style={styles.notifCard}>
+    <ShimmerBlock
+      width={44}
+      height={44}
+      style={{ borderRadius: 12, marginRight: 16 }}
+    />
+    <View style={{ flex: 1 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <ShimmerBlock width={70} height={12} />
+        <ShimmerBlock width={50} height={12} />
+      </View>
+      <ShimmerBlock width="80%" height={16} style={{ marginBottom: 8 }} />
+      <ShimmerBlock width="95%" height={14} style={{ marginBottom: 4 }} />
+      <ShimmerBlock width="60%" height={14} />
+    </View>
+  </View>
+);
+
+const ShimmerList = () => (
+  <View style={styles.list}>
+    {[1, 2, 3, 4, 5, 6].map((i) => (
+      <NotificationShimmer key={i} />
+    ))}
+  </View>
+);
+
+// ─────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────
 const NotificationsPage = () => {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const { notifications, loading, unreadCount } = useSelector(
     (state: RootState) => state.notifications
   );
 
-  useGlobalSpinner(loading);
-
   useEffect(() => {
     dispatch(fetchNotifications());
   }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await dispatch(fetchNotifications());
+    setRefreshing(false);
+  }, [dispatch]);
 
   const filteredNotifications = useMemo(() => {
     if (!searchQuery.trim()) return notifications;
@@ -144,6 +239,9 @@ const NotificationsPage = () => {
     </TouchableOpacity>
   );
 
+  // Show shimmer only on initial load (not on pull-to-refresh)
+  const showShimmer = loading && !refreshing && notifications.length === 0;
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Section */}
@@ -184,33 +282,37 @@ const NotificationsPage = () => {
         </View>
       </View>
 
-      <FlatList
-        data={filteredNotifications}
-        keyExtractor={(item) => item._id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={() => dispatch(fetchNotifications())}
-            tintColor="#EAB308"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Bell size={40} color="#CBD5E1" />
+      {showShimmer ? (
+        <ShimmerList />
+      ) : (
+        <FlatList
+          data={filteredNotifications}
+          keyExtractor={(item) => item._id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#EAB308"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Bell size={40} color="#CBD5E1" />
+              </View>
+              <AppText type="bold" style={styles.emptyTitle}>
+                Nothing here yet
+              </AppText>
+              <AppText style={styles.emptySubtitle}>
+                We'll notify you when something happens.
+              </AppText>
             </View>
-            <AppText type="bold" style={styles.emptyTitle}>
-              Nothing here yet
-            </AppText>
-            <AppText style={styles.emptySubtitle}>
-              We'll notify you when something happens.
-            </AppText>
-          </View>
-        }
-      />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 };

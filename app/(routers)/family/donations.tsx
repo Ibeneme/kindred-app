@@ -11,6 +11,8 @@ import {
   ScrollView,
   Modal,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -28,6 +30,7 @@ import {
   ChevronDown,
   ClipboardList,
   CheckCircle2,
+  Calendar,
 } from "lucide-react-native";
 import { AppText } from "@/src/ui/AppText";
 import { useDispatch, useSelector } from "react-redux";
@@ -46,6 +49,28 @@ const CURRENCIES = [
   { code: "GBP", symbol: "£", flag: "🇬🇧", rate: 1800 },
   { code: "EUR", symbol: "€", flag: "🇪🇺", rate: 1550 },
 ];
+
+// Format campaign created date
+const formatCreatedDate = (dateString?: string) => {
+  if (!dateString) return null;
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return null;
+
+    const day = date.getDate();
+    const month = date.toLocaleString("en-US", { month: "short" });
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "pm" : "am";
+    hours = hours % 12 || 12;
+
+    return `${day} ${month} ${year} • ${hours}:${minutes}${ampm}`;
+  } catch {
+    return null;
+  }
+};
 
 const DonationCampaignPage = () => {
   const router = useRouter();
@@ -89,6 +114,15 @@ const DonationCampaignPage = () => {
     "NAMED" | "ANONYMOUS"
   >("NAMED");
 
+  // Close Modals when Loading triggers
+  useEffect(() => {
+    if (isLoading) {
+      setCampaignModalVisible(false);
+      setDonateModalVisible(false);
+      setCurrencyModalVisible(false);
+    }
+  }, [isLoading]);
+
   useEffect(() => {
     dispatch(fetchUserProfile());
     if (familyId) {
@@ -102,7 +136,7 @@ const DonationCampaignPage = () => {
     dispatch(getFamilyCampaigns(familyId as string)).finally(() =>
       setRefreshing(false)
     );
-  }, [familyId]);
+  }, [familyId, dispatch]);
 
   const convertToNaira = (value: string) => {
     const num = parseFloat(value) || 0;
@@ -127,11 +161,13 @@ const DonationCampaignPage = () => {
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.6,
     });
-    if (!result.canceled) setPaymentProof(result.assets[0]);
+    if (!result.canceled) {
+      setPaymentProof(result.assets[0]);
+    }
   };
 
   const handleSaveCampaign = async () => {
@@ -163,18 +199,22 @@ const DonationCampaignPage = () => {
           createCampaign({ familyId: familyId!, data: campaignData })
         ).unwrap();
       }
-      setCampaignModalVisible(false);
       onRefresh();
     } catch (err: any) {
-      Alert.alert("Error", err);
+      Alert.alert(
+        "Error",
+        typeof err === "string" ? err : err?.message || "Error"
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleManualContribute = async () => {
-    // SECURITY CHECK: Verify goal again before processing
-    if (selectedCampaign.totalRaised >= selectedCampaign.targetAmount) {
+    if (
+      (selectedCampaign?.totalRaised || 0) >=
+      (selectedCampaign?.targetAmount || 0)
+    ) {
       Alert.alert("Closed", "This campaign has already reached its goal.");
       setDonateModalVisible(false);
       return;
@@ -185,8 +225,18 @@ const DonationCampaignPage = () => {
       return;
     }
 
-    setIsLoading(true);
     const amountInNaira = convertToNaira(donationAmount);
+    const minRequired = selectedCampaign?.minimumDonation || 0;
+
+    if (amountInNaira < minRequired) {
+      Alert.alert(
+        "Below Minimum",
+        `Minimum contribution is ${formatDisplay(minRequired)}`
+      );
+      return;
+    }
+
+    setIsLoading(true);
 
     const formData = new FormData();
     formData.append("amountSent", amountInNaira.toString());
@@ -202,13 +252,15 @@ const DonationCampaignPage = () => {
       await dispatch(
         contributeToCampaign({ campaignId: selectedCampaign._id, formData })
       ).unwrap();
-      setDonateModalVisible(false);
       setPaymentProof(null);
       setDonationAmount("");
       Alert.alert("Success", "Contribution submitted!");
       onRefresh();
     } catch (err: any) {
-      Alert.alert("Error", err);
+      Alert.alert(
+        "Error",
+        typeof err === "string" ? err : err?.message || "Something went wrong"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -242,6 +294,10 @@ const DonationCampaignPage = () => {
     const progress = Math.min(
       (item.totalRaised || 0) / (item.targetAmount || 1),
       1
+    );
+
+    const createdAtDisplay = formatCreatedDate(
+      item.createdAt || item.created_at || item.dateCreated
     );
 
     return (
@@ -288,6 +344,7 @@ const DonationCampaignPage = () => {
         <AppText type="bold" style={styles.cardTitle}>
           {item.title}
         </AppText>
+
         <View style={styles.creatorRow}>
           <UserIcon size={12} color="#9CA3AF" />
           <AppText style={styles.creatorText}>
@@ -297,6 +354,16 @@ const DonationCampaignPage = () => {
               : `${item.createdBy?.firstName}`}
           </AppText>
         </View>
+
+        {/* Created Date & Time */}
+        {createdAtDisplay && (
+          <View style={styles.dateRow}>
+            <Calendar size={12} color="#9CA3AF" />
+            <AppText style={styles.dateText}>
+              Created {createdAtDisplay}
+            </AppText>
+          </View>
+        )}
 
         <AppText style={styles.cardDesc} numberOfLines={2}>
           {item.purpose}
@@ -364,314 +431,338 @@ const DonationCampaignPage = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
+      {/* Full-Screen Activity Indicator Overlay */}
       {isLoading && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingCard}>
             <ActivityIndicator size="large" color="#EAB308" />
-            <AppText type="bold" style={{ marginTop: 10 }}>
-              Processing...
+            <AppText type="bold" style={{ marginTop: 12, color: "#111827" }}>
+              Loading...
             </AppText>
           </View>
         </View>
       )}
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <ArrowLeft size={24} color="#111827" />
-        </TouchableOpacity>
-        <View style={{ alignItems: "center" }}>
-          <AppText type="bold" style={styles.headerTitle}>
-            Donations
-          </AppText>
-          <AppText style={styles.headerSub}>{familyName}</AppText>
-        </View>
-        <TouchableOpacity
-          style={styles.currencyToggle}
-          onPress={() => setCurrencyModalVisible(true)}
-        >
-          <AppText style={{ fontSize: 18 }}>{currency.flag}</AppText>
-          <ChevronDown size={12} color="#6B7280" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.tabContainer}>
-        {["all", "created"].map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setActiveTab(t as any)}
-            style={[styles.tab, activeTab === t && styles.activeTab]}
-          >
-            <AppText
-              type="bold"
-              style={[styles.tabText, activeTab === t && styles.activeTabText]}
-            >
-              {t === "all" ? "All" : "Created By You"}
-            </AppText>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <ArrowLeft size={24} color="#111827" />
           </TouchableOpacity>
-        ))}
-      </View>
-
-      <FlatList
-        data={filteredCampaigns}
-        keyExtractor={(item) => item._id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: 20 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#EAB308"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <AppText style={{ color: "#9CA3AF" }}>No campaigns yet.</AppText>
+          <View style={{ alignItems: "center" }}>
+            <AppText type="bold" style={styles.headerTitle}>
+              Donations
+            </AppText>
+            <AppText style={styles.headerSub}>{familyName}</AppText>
           </View>
-        }
-      />
+          <TouchableOpacity
+            style={styles.currencyToggle}
+            onPress={() => setCurrencyModalVisible(true)}
+          >
+            <AppText style={{ fontSize: 18 }}>{currency.flag}</AppText>
+            <ChevronDown size={12} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
 
-      {isOwner && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => openCampaignModal()}
-        >
-          <Plus size={28} color="#FFF" />
-        </TouchableOpacity>
-      )}
-
-      <Modal visible={currencyModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setCurrencyModalVisible(false)}
-        >
-          <View style={styles.currencyDropdown}>
-            {CURRENCIES.map((item) => (
-              <TouchableOpacity
-                key={item.code}
-                style={styles.currencyOption}
-                onPress={() => {
-                  setCurrency(item);
-                  setCurrencyModalVisible(false);
-                }}
+        <View style={styles.tabContainer}>
+          {["all", "created"].map((t) => (
+            <TouchableOpacity
+              key={t}
+              onPress={() => setActiveTab(t as any)}
+              style={[styles.tab, activeTab === t && styles.activeTab]}
+            >
+              <AppText
+                type="bold"
+                style={[
+                  styles.tabText,
+                  activeTab === t && styles.activeTabText,
+                ]}
               >
-                <AppText style={{ fontSize: 20 }}>{item.flag}</AppText>
-                <AppText type="bold" style={{ marginLeft: 10 }}>
-                  {item.code}
-                </AppText>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+                {t === "all" ? "All" : "Created By You"}
+              </AppText>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* CREATE MODAL */}
-      <Modal
-        visible={campaignModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
-          <View style={styles.modalHeader}>
-            <AppText type="bold" style={styles.modalTitle}>
-              {editingItem ? "Edit" : "New"} Campaign ({currency.code})
-            </AppText>
-            <TouchableOpacity
-              onPress={() => setCampaignModalVisible(false)}
-              style={styles.closeBtn}
-            >
-              <X size={20} color="#000" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={{ paddingHorizontal: 20 }}
-          >
-            <AppText style={styles.label}>Contribution Name *</AppText>
-            <TextInput
-              placeholderTextColor={"#666"}
-              style={styles.input}
-              value={title}
-              onChangeText={setTitle}
-              placeholder="e.g. Medical Bill"
+        <FlatList
+          data={filteredCampaigns}
+          keyExtractor={(item) => item._id}
+          renderItem={renderItem}
+          contentContainerStyle={{ padding: 20 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#EAB308"
             />
-            <AppText style={styles.label}>Purpose *</AppText>
-            <TextInput
-              placeholderTextColor={"#666"}
-              style={[styles.input, { height: 100, textAlignVertical: "top" }]}
-              value={purpose}
-              onChangeText={setPurpose}
-              multiline
-              placeholder="Enter a Purpose"
-            />
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <AppText style={styles.label}>
-                  Target ({currency.symbol})
-                </AppText>
-                <TextInput
-                  placeholderTextColor={"#666"}
-                  style={styles.input}
-                  value={targetAmount}
-                  onChangeText={setTargetAmount}
-                  keyboardType="numeric"
-                  placeholder="0.00"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText style={styles.label}>Min ({currency.symbol})</AppText>
-                <TextInput
-                  placeholderTextColor={"#666"}
-                  style={styles.input}
-                  value={minimumDonation}
-                  onChangeText={setMinimumDonation}
-                  keyboardType="numeric"
-                />
-              </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <AppText style={{ color: "#9CA3AF" }}>No campaigns yet.</AppText>
             </View>
-            <View style={styles.accountSection}>
-              <AppText type="bold" style={styles.sectionTitle}>
-                Receiving Account
-              </AppText>
-              <TextInput
-                placeholderTextColor={"#666"}
-                style={[styles.input, { marginTop: 10 }]}
-                value={bankName}
-                onChangeText={setBankName}
-                placeholder="Bank Name"
-              />
-              <TextInput
-                placeholderTextColor={"#666"}
-                style={[styles.input, { marginTop: 12 }]}
-                value={accountNumber}
-                onChangeText={setAccountNumber}
-                placeholder="Account Number"
-                keyboardType="numeric"
-              />
-              <TextInput
-                placeholderTextColor={"#666"}
-                style={[styles.input, { marginTop: 12 }]}
-                value={accountName}
-                onChangeText={setAccountName}
-                placeholder="Account Name"
-              />
-            </View>
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={handleSaveCampaign}
-            >
-              <AppText type="bold" style={{ color: "#FFF" }}>
-                Save Campaign
-              </AppText>
-            </TouchableOpacity>
-            <View style={{ height: 40 }} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+          }
+        />
 
-      {/* CONTRIBUTION MODAL */}
-      <Modal
-        visible={donateModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
-          <View style={styles.modalHeader}>
-            <AppText type="bold" style={styles.modalTitle}>
-              Contribute
-            </AppText>
-            <TouchableOpacity
-              onPress={() => setDonateModalVisible(false)}
-              style={styles.closeBtn}
-            >
-              <X size={20} color="#000" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={{ paddingHorizontal: 20 }}
+        {isOwner && (
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => openCampaignModal()}
           >
-            <View style={styles.paymentInfoCard}>
-              <AppText type="bold" style={styles.paymentTitle}>
-                Bank Transfer Details:
-              </AppText>
-              <AppText style={{ color: "#9CA3AF" }}>
-                Bank: {selectedCampaign?.accountDetails?.bankName}
-              </AppText>
-              <AppText type="bold" style={styles.mainAccountNumber}>
-                {selectedCampaign?.accountDetails?.accountNumber}
-              </AppText>
-              <AppText style={{ color: "#E5E7EB" }}>
-                {selectedCampaign?.accountDetails?.accountName}
-              </AppText>
-            </View>
-            <View style={styles.instructionContainer}>
-              <ShieldCheck size={16} color="#059669" />
-              <AppText style={styles.instructionText}>
-                Pay into the account above and upload proof.
-              </AppText>
-            </View>
-            <AppText style={styles.label}>
-              Amount Sent ({currency.symbol}) *
-            </AppText>
-            <TextInput
-              placeholderTextColor={"#666"}
-              style={styles.input}
-              value={donationAmount}
-              onChangeText={setDonationAmount}
-              keyboardType="numeric"
-              placeholder="0.00"
-            />
-            <AppText style={styles.minNote}>
-              Min: {formatDisplay(selectedCampaign?.minimumDonation)}
-            </AppText>
-            <AppText style={styles.label}>Proof of Payment *</AppText>
-            <TouchableOpacity style={styles.uploadBox} onPress={pickImage}>
-              {paymentProof ? (
-                <Image
-                  source={{ uri: paymentProof.uri }}
-                  style={styles.proofImage}
-                />
-              ) : (
-                <View style={{ alignItems: "center" }}>
-                  <Upload size={28} color="#9CA3AF" />
-                  <AppText style={styles.uploadText}>Select Receipt</AppText>
-                </View>
-              )}
-            </TouchableOpacity>
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
-              {["NAMED", "ANONYMOUS"].map((p) => (
+            <Plus size={28} color="#FFF" />
+          </TouchableOpacity>
+        )}
+
+        <Modal visible={currencyModalVisible} transparent animationType="fade">
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setCurrencyModalVisible(false)}
+          >
+            <View style={styles.currencyDropdown}>
+              {CURRENCIES.map((item) => (
                 <TouchableOpacity
-                  key={p}
-                  onPress={() => setDisplayPreference(p as any)}
-                  style={[
-                    styles.prefBtn,
-                    displayPreference === p && styles.prefBtnActive,
-                  ]}
+                  key={item.code}
+                  style={styles.currencyOption}
+                  onPress={() => {
+                    setCurrency(item);
+                    setCurrencyModalVisible(false);
+                  }}
                 >
-                  <AppText
-                    style={{
-                      color: displayPreference === p ? "#FFF" : "#6B7280",
-                    }}
-                  >
-                    {p === "NAMED" ? "Show Name" : "Anonymous"}
+                  <AppText style={{ fontSize: 20 }}>{item.flag}</AppText>
+                  <AppText type="bold" style={{ marginLeft: 10 }}>
+                    {item.code}
                   </AppText>
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: "#EF4444" }]}
-              onPress={handleManualContribute}
+          </TouchableOpacity>
+        </Modal>
+
+        {/* CREATE MODAL */}
+        <Modal
+          visible={campaignModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }}
             >
-              <AppText type="bold" style={{ color: "#FFF" }}>
-                Submit Proof
-              </AppText>
-            </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+              <View style={styles.modalHeader}>
+                <AppText type="bold" style={styles.modalTitle}>
+                  {editingItem ? "Edit" : "New"} Campaign ({currency.code})
+                </AppText>
+                <TouchableOpacity
+                  onPress={() => setCampaignModalVisible(false)}
+                  style={styles.closeBtn}
+                >
+                  <X size={20} color="#000" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ paddingHorizontal: 20 }}
+              >
+                <AppText style={styles.label}>Contribution Name *</AppText>
+                <TextInput
+                  placeholderTextColor={"#666"}
+                  style={styles.input}
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="e.g. Medical Bill"
+                />
+                <AppText style={styles.label}>Purpose *</AppText>
+                <TextInput
+                  placeholderTextColor={"#666"}
+                  style={[
+                    styles.input,
+                    { height: 100, textAlignVertical: "top" },
+                  ]}
+                  value={purpose}
+                  onChangeText={setPurpose}
+                  multiline
+                  placeholder="Enter a Purpose"
+                />
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <AppText style={styles.label}>
+                      Target ({currency.symbol})
+                    </AppText>
+                    <TextInput
+                      placeholderTextColor={"#666"}
+                      style={styles.input}
+                      value={targetAmount}
+                      onChangeText={setTargetAmount}
+                      keyboardType="numeric"
+                      placeholder="0.00"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <AppText style={styles.label}>
+                      Min ({currency.symbol})
+                    </AppText>
+                    <TextInput
+                      placeholderTextColor={"#666"}
+                      style={styles.input}
+                      value={minimumDonation}
+                      onChangeText={setMinimumDonation}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+                <View style={styles.accountSection}>
+                  <AppText type="bold" style={styles.sectionTitle}>
+                    Receiving Account
+                  </AppText>
+                  <TextInput
+                    placeholderTextColor={"#666"}
+                    style={[styles.input, { marginTop: 10 }]}
+                    value={bankName}
+                    onChangeText={setBankName}
+                    placeholder="Bank Name"
+                  />
+                  <TextInput
+                    placeholderTextColor={"#666"}
+                    style={[styles.input, { marginTop: 12 }]}
+                    value={accountNumber}
+                    onChangeText={setAccountNumber}
+                    placeholder="Account Number"
+                    keyboardType="numeric"
+                  />
+                  <TextInput
+                    placeholderTextColor={"#666"}
+                    style={[styles.input, { marginTop: 12 }]}
+                    value={accountName}
+                    onChangeText={setAccountName}
+                    placeholder="Account Name"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.submitBtn}
+                  onPress={handleSaveCampaign}
+                >
+                  <AppText type="bold" style={{ color: "#FFF" }}>
+                    Save Campaign
+                  </AppText>
+                </TouchableOpacity>
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </Modal>
+
+        {/* CONTRIBUTION MODAL */}
+        <Modal
+          visible={donateModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }}
+            >
+              <View style={styles.modalHeader}>
+                <AppText type="bold" style={styles.modalTitle}>
+                  Contribute
+                </AppText>
+                <TouchableOpacity
+                  onPress={() => setDonateModalVisible(false)}
+                  style={styles.closeBtn}
+                >
+                  <X size={20} color="#000" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ paddingHorizontal: 20 }}
+              >
+                <View style={styles.paymentInfoCard}>
+                  <AppText type="bold" style={styles.paymentTitle}>
+                    Bank Transfer Details:
+                  </AppText>
+                  <AppText style={{ color: "#9CA3AF" }}>
+                    Bank: {selectedCampaign?.accountDetails?.bankName}
+                  </AppText>
+                  <AppText type="bold" style={styles.mainAccountNumber}>
+                    {selectedCampaign?.accountDetails?.accountNumber}
+                  </AppText>
+                  <AppText style={{ color: "#E5E7EB" }}>
+                    {selectedCampaign?.accountDetails?.accountName}
+                  </AppText>
+                </View>
+                <View style={styles.instructionContainer}>
+                  <ShieldCheck size={16} color="#059669" />
+                  <AppText style={styles.instructionText}>
+                    Pay into the account above and upload proof.
+                  </AppText>
+                </View>
+                <AppText style={styles.label}>
+                  Amount Sent ({currency.symbol}) *
+                </AppText>
+                <TextInput
+                  placeholderTextColor={"#666"}
+                  style={styles.input}
+                  value={donationAmount}
+                  onChangeText={setDonationAmount}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                />
+                <AppText style={styles.minNote}>
+                  Min: {formatDisplay(selectedCampaign?.minimumDonation)}
+                </AppText>
+                <AppText style={styles.label}>Proof of Payment *</AppText>
+                <TouchableOpacity style={styles.uploadBox} onPress={pickImage}>
+                  {paymentProof ? (
+                    <Image
+                      source={{ uri: paymentProof.uri }}
+                      style={styles.proofImage}
+                    />
+                  ) : (
+                    <View style={{ alignItems: "center" }}>
+                      <Upload size={28} color="#9CA3AF" />
+                      <AppText style={styles.uploadText}>
+                        Select Receipt
+                      </AppText>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
+                  {["NAMED", "ANONYMOUS"].map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => setDisplayPreference(p as any)}
+                      style={[
+                        styles.prefBtn,
+                        displayPreference === p && styles.prefBtnActive,
+                      ]}
+                    >
+                      <AppText
+                        style={{
+                          color: displayPreference === p ? "#FFF" : "#6B7280",
+                        }}
+                      >
+                        {p === "NAMED" ? "Show Name" : "Anonymous"}
+                      </AppText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={[styles.submitBtn, { backgroundColor: "#EF4444" }]}
+                  onPress={handleManualContribute}
+                >
+                  <AppText type="bold" style={{ color: "#FFF" }}>
+                    Submit Proof
+                  </AppText>
+                </TouchableOpacity>
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </Modal>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -679,19 +770,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    zIndex: 9999,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    zIndex: 99999,
     justifyContent: "center",
     alignItems: "center",
   },
   loadingCard: {
     backgroundColor: "#FFF",
-    padding: 30,
+    padding: 28,
     borderRadius: 20,
     alignItems: "center",
-    shadowOpacity: 0.2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
     shadowRadius: 10,
-    elevation: 5,
+    elevation: 8,
   },
   header: {
     flexDirection: "row",
@@ -728,7 +821,7 @@ const styles = StyleSheet.create({
   activeTabText: { color: "#FFF" },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 96,
     right: 20,
     width: 60,
     height: 60,
@@ -771,9 +864,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   creatorText: { fontSize: 12, color: "#9CA3AF" },
+  // ✅ New styles for created date
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 12,
+  },
+  dateText: { fontSize: 12, color: "#9CA3AF" },
   cardDesc: {
     fontSize: 14,
     color: "#6B7280",

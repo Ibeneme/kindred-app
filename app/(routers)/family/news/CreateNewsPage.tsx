@@ -8,6 +8,8 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -143,138 +145,145 @@ const CreateNewsPage = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        {/* --- INPUTS --- */}
-        <View style={styles.inputGroup}>
-          <AppText style={styles.label} type="bold">
-            HEADING
-          </AppText>
-          <TextInput
-            style={styles.titleInput}
-            placeholder="What's the highlight?"
-            placeholderTextColor={GRAY}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <AppText style={styles.label} type="bold">
-            DESCRIPTION
-          </AppText>
-          <TextInput
-            style={styles.contentInput}
-            placeholder="Share the full story with the family..."
-            placeholderTextColor={GRAY}
-            multiline
-            value={content}
-            onChangeText={setContent}
-          />
-        </View>
-
-        {/* --- MEDIA ACTIONS --- */}
-        <AppText style={styles.label} type="bold">
-          ATTACHMENTS
-        </AppText>
-        <View style={styles.mediaActions}>
-          <TouchableOpacity style={styles.mediaBtn} onPress={pickImage}>
-            <Camera color={DARK} size={20} />
-            <AppText type="bold" style={styles.mediaBtnText}>
-              Photos
+        <ScrollView
+          contentContainerStyle={styles.scrollBody}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* --- INPUTS --- */}
+          <View style={styles.inputGroup}>
+            <AppText style={styles.label} type="bold">
+              HEADING
             </AppText>
-          </TouchableOpacity>
+            <TextInput
+              style={styles.titleInput}
+              placeholder="What's the highlight?"
+              placeholderTextColor={GRAY}
+              value={title}
+              onChangeText={setTitle}
+            />
+          </View>
 
-          <TouchableOpacity
-            style={[
-              styles.mediaBtn,
-              recording && {
-                backgroundColor: "#FEE2E2",
-                borderColor: "#EF4444",
-              },
-            ]}
-            onPress={recording ? stopRecording : startRecording}
-          >
-            {recording ? (
-              <Square color="#EF4444" size={20} fill="#EF4444" />
-            ) : (
-              <Mic color={DARK} size={20} />
-            )}
-            <AppText
-              type="bold"
-              style={[styles.mediaBtnText, recording && { color: "#EF4444" }]}
-            >
-              {recording ? "Stop Now" : "Voice Note"}
+          <View style={styles.inputGroup}>
+            <AppText style={styles.label} type="bold">
+              DESCRIPTION
             </AppText>
-          </TouchableOpacity>
-        </View>
+            <TextInput
+              style={styles.contentInput}
+              placeholder="Share the full story with the family..."
+              placeholderTextColor={GRAY}
+              multiline
+              value={content}
+              onChangeText={setContent}
+            />
+          </View>
 
-        {/* --- PREVIEWS / PLACEHOLDERS --- */}
-        <View style={styles.previewContainer}>
-          {images.length === 0 && !voiceUri && !recording && (
-            <View style={styles.placeholderBox}>
-              <ImageIcon size={30} color={BORDER} />
-              <AppText style={styles.placeholderText}>
-                No media attached yet
+          {/* --- MEDIA ACTIONS --- */}
+          <AppText style={styles.label} type="bold">
+            ATTACHMENTS
+          </AppText>
+          <View style={styles.mediaActions}>
+            <TouchableOpacity style={styles.mediaBtn} onPress={pickImage}>
+              <Camera color={DARK} size={20} />
+              <AppText type="bold" style={styles.mediaBtnText}>
+                Photos
               </AppText>
-            </View>
-          )}
+            </TouchableOpacity>
 
-          {images.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.imageScroll}
+            <TouchableOpacity
+              style={[
+                styles.mediaBtn,
+                recording && {
+                  backgroundColor: "#FEE2E2",
+                  borderColor: "#EF4444",
+                },
+              ]}
+              onPress={recording ? stopRecording : startRecording}
             >
-              {images.map((img, i) => (
-                <View key={i} style={styles.thumbWrapper}>
-                  <Image source={{ uri: img.uri }} style={styles.thumb} />
-                  <TouchableOpacity
-                    style={styles.removeImgBtn}
-                    onPress={() => removeImage(i)}
-                  >
-                    <X color="#FFF" size={12} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          )}
-
-          {recording && (
-            <View style={styles.recordingStatus}>
-              <ActivityIndicator
-                size="small"
-                color="#EF4444"
-                style={{ marginRight: 10 }}
-              />
-              <AppText type="bold" style={{ color: "#EF4444" }}>
-                Capturing Audio...
+              {recording ? (
+                <Square color="#EF4444" size={20} fill="#EF4444" />
+              ) : (
+                <Mic color={DARK} size={20} />
+              )}
+              <AppText
+                type="bold"
+                style={[styles.mediaBtnText, recording && { color: "#EF4444" }]}
+              >
+                {recording ? "Stop Now" : "Voice Note"}
               </AppText>
-            </View>
-          )}
+            </TouchableOpacity>
+          </View>
 
-          {voiceUri && !recording && (
-            <View style={styles.voicePreview}>
-              <View style={styles.voiceInfo}>
-                <View style={styles.voiceIconBox}>
-                  <Music size={16} color={DARK} />
-                </View>
-                <AppText type="bold" style={{ fontSize: 13 }}>
-                  Voice recording attached
+          {/* --- PREVIEWS / PLACEHOLDERS --- */}
+          <View style={styles.previewContainer}>
+            {images.length === 0 && !voiceUri && !recording && (
+              <View style={styles.placeholderBox}>
+                <ImageIcon size={30} color={BORDER} />
+                <AppText style={styles.placeholderText}>
+                  No media attached yet
                 </AppText>
               </View>
-              <TouchableOpacity
-                onPress={() => setVoiceUri(null)}
-                style={styles.trashBtn}
+            )}
+
+            {images.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.imageScroll}
               >
-                <Trash2 size={18} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+                {images.map((img, i) => (
+                  <View key={i} style={styles.thumbWrapper}>
+                    <Image source={{ uri: img.uri }} style={styles.thumb} />
+                    <TouchableOpacity
+                      style={styles.removeImgBtn}
+                      onPress={() => removeImage(i)}
+                    >
+                      <X color="#FFF" size={12} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {recording && (
+              <View style={styles.recordingStatus}>
+                <ActivityIndicator
+                  size="small"
+                  color="#EF4444"
+                  style={{ marginRight: 10 }}
+                />
+                <AppText type="bold" style={{ color: "#EF4444" }}>
+                  Capturing Audio...
+                </AppText>
+              </View>
+            )}
+
+            {voiceUri && !recording && (
+              <View style={styles.voicePreview}>
+                <View style={styles.voiceInfo}>
+                  <View style={styles.voiceIconBox}>
+                    <Music size={16} color={DARK} />
+                  </View>
+                  <AppText type="bold" style={{ fontSize: 13 }}>
+                    Voice recording attached
+                  </AppText>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setVoiceUri(null)}
+                  style={styles.trashBtn}
+                >
+                  <Trash2 size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -309,7 +318,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  scrollBody: { padding: 20 },
+  scrollBody: { padding: 20, paddingBottom: 40 },
   inputGroup: { marginBottom: 25 },
   label: { fontSize: 11, color: GRAY, letterSpacing: 1.5, marginBottom: 10 },
 

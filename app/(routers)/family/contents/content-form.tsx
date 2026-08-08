@@ -11,6 +11,7 @@ import {
   Pressable,
   Image as RNImage,
   Linking,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -196,7 +197,7 @@ const ContentFormPage = () => {
       contentType,
       title: formValues.title,
       description: formValues.description,
-      videoUrl: formValues.videoUrl, // Language Lesson support
+      videoUrl: formValues.videoUrl,
       metadata: { ...formValues },
       images: selectedImages.filter((img) => !img.isRemote),
     };
@@ -272,67 +273,81 @@ const ContentFormPage = () => {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-        {mode === "view" ? (
-          <View>
-            <View style={styles.typeHeader}>
-              {contentType === "Patriarch" ? (
-                <User color={BRAND_YELLOW} size={24} />
-              ) : (
-                <BookOpen color={BRAND_YELLOW} size={24} />
-              )}
-              <AppText type="bold" style={styles.viewTitle}>
-                {formValues.title}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {mode === "view" ? (
+            <View>
+              <View style={styles.typeHeader}>
+                {contentType === "Patriarch" ? (
+                  <User color={BRAND_YELLOW} size={24} />
+                ) : (
+                  <BookOpen color={BRAND_YELLOW} size={24} />
+                )}
+                <AppText type="bold" style={styles.viewTitle}>
+                  {formValues.title}
+                </AppText>
+              </View>
+              <AppText style={styles.viewDesc}>
+                {formValues.description}
               </AppText>
+              {renderMetadataDisplay()}
             </View>
-            <AppText style={styles.viewDesc}>{formValues.description}</AppText>
-            {renderMetadataDisplay()}
-          </View>
-        ) : (
-          fields.map(renderField)
-        )}
+          ) : (
+            fields.map(renderField)
+          )}
 
-        {/* Photos Section */}
-        <View style={{ marginTop: 30 }}>
-          <AppText style={styles.label}>GALLERY</AppText>
-          <View style={styles.imageRow}>
-            {mode !== "view" && (
-              <TouchableOpacity
-                style={styles.addPhotoBtn}
-                onPress={async () => {
-                  const res = await ImagePicker.launchImageLibraryAsync({
-                    allowsMultipleSelection: true,
-                  });
-                  if (!res.canceled)
-                    setSelectedImages((p) => [
-                      ...p,
-                      ...res.assets.map((a) => ({ uri: a.uri })),
-                    ]);
-                }}
-              >
-                <Camera size={28} color={GRAY} />
-              </TouchableOpacity>
-            )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {selectedImages.map((img, idx) => (
-                <View key={idx} style={styles.previewWrapper}>
-                  <RNImage source={{ uri: img.uri }} style={styles.preview} />
-                  {mode !== "view" && (
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() =>
-                        setSelectedImages((p) => p.filter((_, i) => i !== idx))
-                      }
-                    >
-                      <X size={14} color="#FFF" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
+          {/* Photos Section */}
+          <View style={{ marginTop: 30 }}>
+            <AppText style={styles.label}>GALLERY</AppText>
+            <View style={styles.imageRow}>
+              {mode !== "view" && (
+                <TouchableOpacity
+                  style={styles.addPhotoBtn}
+                  onPress={async () => {
+                    const res = await ImagePicker.launchImageLibraryAsync({
+                      allowsMultipleSelection: true,
+                    });
+                    if (!res.canceled)
+                      setSelectedImages((p) => [
+                        ...p,
+                        ...res.assets.map((a) => ({ uri: a.uri })),
+                      ]);
+                  }}
+                >
+                  <Camera size={28} color={GRAY} />
+                </TouchableOpacity>
+              )}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {selectedImages.map((img, idx) => (
+                  <View key={idx} style={styles.previewWrapper}>
+                    <RNImage source={{ uri: img.uri }} style={styles.preview} />
+                    {mode !== "view" && (
+                      <TouchableOpacity
+                        style={styles.removeBtn}
+                        onPress={() =>
+                          setSelectedImages((p) =>
+                            p.filter((_, i) => i !== idx)
+                          )
+                        }
+                      >
+                        <X size={14} color="#FFF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

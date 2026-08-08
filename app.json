@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "kokohor",
-    "slug": "kokohor",
+    "slug": "kindred",
     "version": "7.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -34,14 +34,26 @@
         "INTERNET",
         "CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+
+        // === Required by CallKeep ===
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_PHONE_NUMBERS",
+        "android.permission.CALL_PHONE",
+        "android.permission.WAKE_LOCK"
       ]
     },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/icon.png"
-    },
     "plugins": [
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -62,20 +74,19 @@
         {
           "microphonePermission": "Allow Kokohor to access your microphone for calls."
         }
-      ]
+      ],
+      "expo-video",
+
+      // === Add this ===
+      "@config-plugins/react-native-callkeep"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "supabaseUrl": "https://npzblfeflejcyclcopfi.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wemJsZmVmbGVqY3ljbGNvcGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMDgwNTQsImV4cCI6MjA4MjU4NDA1NH0.gsMilqRpVtYEd2Pj2ofPCQZiJOOMpCDY-8ucyvBsISk",
-      "router": {},
-      "eas": {
-        "projectId": "bdb36e91-be76-4209-b212-02f9cf2e4558"
-      }
+      // ... your existing extra
     },
-    "owner": "clonekraft-app"
+    "owner": "benson-eas-team"
   }
 }

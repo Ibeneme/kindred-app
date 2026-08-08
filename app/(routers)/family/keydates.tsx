@@ -54,6 +54,7 @@ const KeyDatesPage = () => {
     (state: RootState) => state.familyContent
   );
 
+  console.warn(contents, 'contentscontentscontents')
   const [modalVisible, setModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -565,7 +566,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 24,
-    bottom: 32,
+    bottom: 96,
     width: 64,
     height: 64,
     borderRadius: 32,

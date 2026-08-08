@@ -76,7 +76,6 @@ const FamilyMembersPage = () => {
 
   useEffect(() => {
     dispatch(fetchUserProfile());
- 
   }, [dispatch]);
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -396,12 +395,12 @@ const FamilyMembersPage = () => {
                   </View>
                   <AppText style={styles.email}>{member.email}</AppText>
 
-                  {member.isOnline && !member.suspended && (
+                  {/* {member.isOnline && !member.suspended && (
                     <View style={styles.onlineContainer}>
                       <View style={styles.onlineDot} />
                       <AppText style={styles.onlineText}>Online</AppText>
                     </View>
-                  )}
+                  )} */}
 
                   <View style={styles.roleTag}>
                     <Lock

@@ -7,13 +7,11 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Modal,
   Dimensions,
   Pressable,
   ActivityIndicator,
   Keyboard,
-  Animated,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
@@ -37,8 +35,8 @@ import {
   Check,
   CheckCheck,
   Clock,
-  Edit,
   Video,
+  Phone,
 } from "lucide-react-native";
 import {
   SafeAreaView,
@@ -108,7 +106,6 @@ const ChatScreen = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [previewSound, setPreviewSound] = useState<Audio.Sound | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const [isAudioBusy, setIsAudioBusy] = useState(false);
@@ -155,7 +152,7 @@ const ChatScreen = () => {
     });
   };
 
-  // --- INITIAL LOAD (AUTO-FOCUS LAST MESSAGE) ---
+  // --- INITIAL LOAD ---
 
   useEffect(() => {
     (async () => {
@@ -166,7 +163,6 @@ const ChatScreen = () => {
         setMessages(parsed);
       }
 
-      // Audio Permissions
       try {
         const { status } = await Audio.requestPermissionsAsync();
         if (status === "granted") {
@@ -184,10 +180,8 @@ const ChatScreen = () => {
     })();
   }, [uuid]);
 
-  // Handle scrolling ONLY on new messages
   useEffect(() => {
     if (messages.length > prevMsgCount.current) {
-      // It's a new message, scroll with animation
       flatListRef.current?.scrollToEnd({ animated: true });
     }
     prevMsgCount.current = messages.length;
@@ -440,8 +434,6 @@ const ChatScreen = () => {
     }
   };
 
-  // --- RENDER ITEM ---
-
   const renderMessageItem = useCallback(
     ({ item }: { item: Message }) => {
       const isMe = item.senderId === senderId;
@@ -582,7 +574,7 @@ const ChatScreen = () => {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -625,15 +617,30 @@ const ChatScreen = () => {
             )}
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn}>
-          <Video size={22} color="#1E293B" />
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() =>
+            router.push({
+              pathname: "/call/audio-call",
+              params: {
+                roomId: uuid,
+                callerId: senderId,
+                receiverId,
+                receiverName,
+                receiverProfilePicture: receiverProfilePicture || "",
+                isCaller: "true",
+              },
+            })
+          }
+        >
+          <Phone size={22} color="#1E293B" />
         </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 60 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -641,16 +648,16 @@ const ChatScreen = () => {
           renderItem={renderMessageItem}
           keyExtractor={(m) => m.uuid}
           contentContainerStyle={styles.messagesList}
-          // FIX: In-built scroll focus
           initialNumToRender={messages.length > 0 ? messages.length : 15}
-          onContentSizeChange={() => {
-            // No auto-scroll on change, we handle it via the useEffect
-          }}
-          // Ensures the screen starts at bottom without animation
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
         />
 
-        <View style={styles.bottomWrapper}>
+        <View
+          style={[
+            styles.bottomWrapper,
+            { paddingBottom: Math.max(insets.bottom, 10) },
+          ]}
+        >
           {showOptions && (
             <View style={styles.optionsPopup}>
               <TouchableOpacity

@@ -139,6 +139,9 @@ const FamilyDetailPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isGridView, setIsGridView] = useState(true);
 
+  // Tracks initial load so we only trigger the blocking spinner on first mount
+  const isInitialMount = useRef(true);
+
   useGlobalSpinner(loading);
 
   const fetchInitialData = async (isSilent = false) => {
@@ -164,7 +167,12 @@ const FamilyDetailPage = () => {
 
   useFocusEffect(
     useCallback(() => {
-      fetchInitialData();
+      if (isInitialMount.current) {
+        fetchInitialData(false);
+        isInitialMount.current = false;
+      } else {
+        fetchInitialData(true);
+      }
     }, [id])
   );
 
@@ -173,7 +181,7 @@ const FamilyDetailPage = () => {
       setLoading(true);
       await dispatch(requestToJoin(id as string)).unwrap();
       Alert.alert("Request Sent", "Waiting for circle owner approval.");
-      fetchInitialData();
+      fetchInitialData(true);
     } catch (err: any) {
       Alert.alert("Error", err || "Failed to send request");
       setLoading(false);
@@ -189,7 +197,7 @@ const FamilyDetailPage = () => {
       } else {
         await dispatch(declineInvite(id as string)).unwrap();
       }
-      fetchInitialData();
+      fetchInitialData(true);
     } catch (err: any) {
       Alert.alert("Error", err || "Action failed");
       setLoading(false);
@@ -211,7 +219,7 @@ const FamilyDetailPage = () => {
           declineJoinRequest({ familyId: id as string, userId })
         ).unwrap();
       }
-      fetchInitialData();
+      fetchInitialData(true);
     } catch (err: any) {
       Alert.alert("Error", "Action failed");
       setLoading(false);
@@ -288,10 +296,10 @@ const FamilyDetailPage = () => {
           }),
       },
       suggestions: {
-        label: "Suggestions",
+        label: "Resolutions",
         icon: <MessageSquare size={22} color="#F59E0B" />,
-        badge: getBadge("Suggestion Box"),
-        onPress: () => navigateToContent("Suggestion Box"),
+        badge: getBadge("Resolution"),
+        onPress: () => navigateToContent("Resolution"),
       },
       polls: {
         label: "Polls",
@@ -345,75 +353,85 @@ const FamilyDetailPage = () => {
     };
 
     const mapping: Record<string, any[]> = {
+      "Nuclear Family": [
+        modules.news,
+        modules.suggestions,
+        modules.tasks,
+        modules.keydates,
+        modules.tree,
+        modules.history,
+        modules.village,
+        modules.traditions,
+        modules.language,
+        modules.polls,
+        modules.donations,
+        modules.safety,
+        modules.invite,
+      ],
+      "Extended Family": [
+        modules.news,
+        modules.suggestions,
+        modules.history,
+        modules.village,
+        modules.traditions,
+        modules.language,
+        modules.polls,
+        modules.donations,
+        modules.tasks,
+        modules.keydates,
+        modules.safety,
+        modules.invite,
+      ],
       "Workplace Team": [
         modules.news,
+        modules.suggestions,
         modules.tasks,
         modules.reports,
+        modules.polls,
+        modules.donations,
+        modules.invite,
+      ],
+      "Religious Group": [
+        modules.news,
         modules.suggestions,
+        modules.keydates,
+        modules.polls,
+        modules.donations,
+        modules.invite,
+      ],
+      Community: [
+        modules.news,
+        modules.suggestions,
+        modules.history,
+        modules.village,
+        modules.traditions,
+        modules.language,
         modules.polls,
         modules.donations,
         modules.invite,
       ],
       Others: [
         modules.news,
+        modules.suggestions,
         modules.tasks,
         modules.reports,
-        modules.suggestions,
         modules.polls,
         modules.donations,
-        modules.invite,
-        modules.safety,
-        modules.keydates,
-      ],
-      "Nuclear Family": [
-        modules.news,
-        modules.tree,
-        modules.history,
-        modules.village,
-        modules.traditions,
-        modules.language,
-        modules.invite,
-        modules.suggestions,
-        modules.polls,
-        modules.donations,
-        modules.tasks,
         modules.keydates,
         modules.safety,
-      ],
-      "Extended Family": [
-        modules.news,
-        modules.history,
-        modules.village,
-        modules.traditions,
-        modules.language,
         modules.invite,
-        modules.suggestions,
-        modules.polls,
-        modules.donations,
-        modules.tasks,
-        modules.keydates,
-        modules.safety,
-      ],
-      "Religious Group": [
-        modules.news,
-        modules.suggestions,
-        modules.donations,
-        modules.invite,
-      ],
-      Community: [
-        modules.news,
-        modules.history,
-        modules.village,
-        modules.traditions,
-        modules.language,
-        modules.invite,
-        modules.suggestions,
-        modules.polls,
-        modules.donations,
       ],
     };
 
-    return mapping[type] || [modules.news, modules.invite];
+    return (
+      mapping[type] || [
+        modules.news,
+        modules.suggestions,
+        modules.tasks,
+        modules.polls,
+        modules.invite,
+      ]
+    );
   };
 
   if (!familyData || !user) return null;

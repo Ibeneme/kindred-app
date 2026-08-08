@@ -202,12 +202,11 @@ const TabIcon = ({ Icon, color, focused, badgeCount }: any) => (
 const styles = StyleSheet.create({
   tabBar: {
     position: "absolute",
-    height: Platform.OS === "ios" ? 88 : 78,
+    height: Platform.OS === "ios" ? 88 : 110,
     paddingTop: 10,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 0,
-    elevation: 20,
-    paddingBottom: 48
+    paddingBottom: 48,
   },
   label: { fontSize: 12, fontWeight: "600" },
   iconContainer: {

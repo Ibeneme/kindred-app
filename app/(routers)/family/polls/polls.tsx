@@ -136,6 +136,21 @@ const PollsPage = () => {
     const selectedOptionId =
       optimisticVotes[item._id] || item.userVotedOptionId;
 
+    // Creator + launch date
+    const senderName = item.sender
+      ? `${item.sender.firstName || ""} ${item.sender.lastName || ""}`.trim() ||
+        "Family member"
+      : "Unknown";
+    const launchedAt = item.createdAt
+      ? new Date(item.createdAt).toLocaleString([], {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+
     return (
       <View style={[styles.card, closed && styles.closedCard]}>
         <View style={styles.cardHeader}>
@@ -150,10 +165,18 @@ const PollsPage = () => {
                 </View>
               )}
             </View>
-            {item.description && (
+
+            {/* Who launched + when */}
+            <AppText style={styles.metaLine}>
+              By {senderName}
+              {launchedAt ? ` · ${launchedAt}` : ""}
+            </AppText>
+
+            {item.description ? (
               <AppText style={styles.pollDesc}>{item.description}</AppText>
-            )}
+            ) : null}
           </View>
+
           {userIsOwner && (
             <TouchableOpacity
               onPress={() => {
@@ -480,7 +503,7 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 13, color: "#94A3B8" },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 96,
     right: 20,
     width: 68,
     height: 68,
@@ -521,6 +544,12 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: "center",
     alignItems: "center",
+  },
+  metaLine: {
+    fontSize: 13,
+    color: "#94A3B8",
+    marginTop: 4,
+    marginBottom: 2,
   },
 });
 

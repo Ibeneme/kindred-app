@@ -802,7 +802,7 @@ const styles = StyleSheet.create({
   iconButton: { padding: 2 },
   floatingButton: {
     position: "absolute",
-    bottom: 24,
+    bottom: 96,
     right: 24,
     width: 60,
     height: 60,

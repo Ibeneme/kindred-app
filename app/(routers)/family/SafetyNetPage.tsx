@@ -55,7 +55,6 @@ const SafetyNetPage = () => {
     familyName: string;
     currentMembers: string;
   }>();
-
   const dispatch = useDispatch<AppDispatch>();
 
   const familyMembers = useMemo(() => {
@@ -66,27 +65,33 @@ const SafetyNetPage = () => {
     }
   }, [currentMembers]);
 
-  const {
-    safetyNets = [],
-    assignedNets = [],
-    loading,
-    isSubmitting,
-  } = useSelector((state: RootState) => state.safetyNet);
+  // Only data from Redux – loading / isSubmitting are local
+  const { safetyNets = [], assignedNets = [] } = useSelector(
+    (state: RootState) => state.safetyNet
+  );
   const { user } = useSelector((state: RootState) => state.user);
+
+  // Local loading states
+  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"created" | "assigned">("created");
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userSelectorVisible, setUserSelectorVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
 
+  // Delete confirmation
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Form State
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState(""); // --- NEW DESCRIPTION STATE ---
+  const [description, setDescription] = useState("");
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [images, setImages] = useState<any[]>([]);
   const [audios, setAudios] = useState<any[]>([]);
@@ -109,10 +114,18 @@ const SafetyNetPage = () => {
     return `${selectedUsers.length} Member(s) Selected`;
   }, [selectedUsers]);
 
-  const fetchData = useCallback(() => {
-    if (familyId) {
-      dispatch(getFamilySafetyNets(familyId));
-      dispatch(getAssignedSafetyNets(familyId));
+  const fetchData = useCallback(async () => {
+    if (!familyId) return;
+    setLoading(true);
+    try {
+      await Promise.all([
+        dispatch(getFamilySafetyNets(familyId)).unwrap(),
+        dispatch(getAssignedSafetyNets(familyId)).unwrap(),
+      ]);
+    } catch (e) {
+      // optional: handle error
+    } finally {
+      setLoading(false);
     }
   }, [familyId, dispatch]);
 
@@ -120,9 +133,9 @@ const SafetyNetPage = () => {
     fetchData();
   }, [fetchData]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchData();
+    await fetchData();
     setRefreshing(false);
   }, [fetchData]);
 
@@ -213,7 +226,7 @@ const SafetyNetPage = () => {
 
     const formData = new FormData();
     formData.append("title", title);
-    formData.append("description", description); // --- SEND DESCRIPTION ---
+    formData.append("description", description);
     formData.append("triggerDate", date.toISOString());
     formData.append("assignedUsers", JSON.stringify(selectedUsers));
 
@@ -242,6 +255,7 @@ const SafetyNetPage = () => {
       });
     });
 
+    setIsSubmitting(true);
     try {
       await dispatch(
         createSafetyNet({ familyId: familyId!, formData })
@@ -251,12 +265,14 @@ const SafetyNetPage = () => {
       Alert.alert("Success", "Safety Net Vault Secured.");
     } catch (err: any) {
       Alert.alert("Error", err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const resetForm = () => {
     setTitle("");
-    setDescription(""); // --- RESET DESCRIPTION ---
+    setDescription("");
     setDate(new Date());
     setSelectedUsers([]);
     setImages([]);
@@ -264,10 +280,37 @@ const SafetyNetPage = () => {
     setVideos([]);
   };
 
+  // Open confirm modal
+  const openDeleteModal = (id: string) => {
+    setItemToDelete(id);
+    setDeleteModalVisible(true);
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setIsDeleting(true);
+    try {
+      await dispatch(deleteSafetyNet(itemToDelete)).unwrap();
+      setDeleteModalVisible(false);
+      setItemToDelete(null);
+      // optional: refresh list
+      fetchData();
+    } catch (err: any) {
+      Alert.alert("Error", err || "Failed to delete vault");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const renderNetItem = ({ item }: { item: any }) => {
     const isReleased = new Date(item.triggerDate) <= new Date();
     const isOwner = item.createdBy?._id === user?._id;
     const creator = item.createdBy;
+
+    // Allow delete for owner (created tab) OR for receiver (assigned tab)
+    const canDelete =
+      (isOwner && activeTab === "created") || activeTab === "assigned";
 
     return (
       <TouchableOpacity
@@ -296,9 +339,14 @@ const SafetyNetPage = () => {
           <AppText type="bold" style={styles.netTitle}>
             {item.title}
           </AppText>
-          {isOwner && activeTab === "created" && (
+
+          {canDelete && (
             <TouchableOpacity
-              onPress={() => dispatch(deleteSafetyNet(item._id))}
+              onPress={(e) => {
+                e.stopPropagation?.(); // prevent card press
+                openDeleteModal(item._id);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Trash2 size={18} color="#EF4444" />
             </TouchableOpacity>
@@ -316,7 +364,6 @@ const SafetyNetPage = () => {
           </AppText>
         </View>
 
-        {/* --- CREATOR DETAILS SECTION --- */}
         <View style={styles.creatorFooter}>
           <View style={styles.creatorInfo}>
             {creator?.profilePicture ? (
@@ -336,7 +383,6 @@ const SafetyNetPage = () => {
               </AppText>
             </View>
           </View>
-
           <View style={styles.mediaCountRow}>
             <View style={styles.mediaTag}>
               <ImageIcon size={10} color="#6B7280" />
@@ -408,29 +454,35 @@ const SafetyNetPage = () => {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={displayData}
-        keyExtractor={(item) => item._id}
-        renderItem={renderNetItem}
-        contentContainerStyle={{ padding: 20 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#10B981"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Shield size={40} color="#D1D5DB" />
-            <AppText style={{ color: "#9CA3AF", marginTop: 10 }}>
-              {activeTab === "created"
-                ? "You haven't created any vaults."
-                : "No shared vaults yet."}
-            </AppText>
-          </View>
-        }
-      />
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10B981" />
+        </View>
+      ) : (
+        <FlatList
+          data={displayData}
+          keyExtractor={(item) => item._id}
+          renderItem={renderNetItem}
+          contentContainerStyle={{ padding: 20, flexGrow: 1 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#10B981"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Shield size={40} color="#D1D5DB" />
+              <AppText style={{ color: "#9CA3AF", marginTop: 10 }}>
+                {activeTab === "created"
+                  ? "You haven't created any vaults."
+                  : "No shared vaults yet."}
+              </AppText>
+            </View>
+          }
+        />
+      )}
 
       {activeTab === "created" && (
         <TouchableOpacity
@@ -456,7 +508,6 @@ const SafetyNetPage = () => {
               <X size={24} color="#000" />
             </TouchableOpacity>
           </View>
-
           <ScrollView
             showsVerticalScrollIndicator={false}
             style={{ padding: 20 }}
@@ -474,7 +525,7 @@ const SafetyNetPage = () => {
               Description (Instructions/Legacy Message)
             </AppText>
             <TextInput
-              style={[styles.input, { height: 120, textAlignVertical: "top" }]} // --- NEW DESCRIPTION INPUT ---
+              style={[styles.input, { height: 120, textAlignVertical: "top" }]}
               value={description}
               onChangeText={setDescription}
               placeholder="Write a message or instructions for your beneficiaries..."
@@ -543,7 +594,6 @@ const SafetyNetPage = () => {
               </TouchableOpacity>
             </View>
 
-            {/* MEDIA PREVIEW SECTION */}
             {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
               <ScrollView
                 horizontal
@@ -641,6 +691,7 @@ const SafetyNetPage = () => {
           </ScrollView>
         </SafeAreaView>
 
+        {/* User selector modal */}
         <Modal visible={userSelectorVisible} animationType="fade" transparent>
           <View style={styles.dropdownOverlay}>
             <SafeAreaView style={styles.dropdownContent}>
@@ -695,6 +746,63 @@ const SafetyNetPage = () => {
           </View>
         </Modal>
       </Modal>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeleting) {
+            setDeleteModalVisible(false);
+            setItemToDelete(null);
+          }
+        }}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteModal}>
+            <View style={styles.deleteIconWrap}>
+              <Trash2 size={28} color="#EF4444" />
+            </View>
+            <AppText type="bold" style={styles.deleteTitle}>
+              Delete Vault?
+            </AppText>
+            <AppText style={styles.deleteMessage}>
+              This action cannot be undone. The vault and all its media will be
+              permanently removed.
+            </AppText>
+
+            <View style={styles.deleteActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  setDeleteModalVisible(false);
+                  setItemToDelete(null);
+                }}
+                disabled={isDeleting}
+              >
+                <AppText type="bold" style={{ color: "#4B5563" }}>
+                  Cancel
+                </AppText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmDeleteBtn}
+                onPress={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <AppText type="bold" style={{ color: "#FFF" }}>
+                    Delete
+                  </AppText>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -727,7 +835,7 @@ const styles = StyleSheet.create({
   activeTabText: { color: "#FFF" },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 96,
     right: 20,
     width: 60,
     height: 60,
@@ -736,6 +844,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   netCard: {
     backgroundColor: "#FFF",
@@ -793,18 +906,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#111827",
   },
-  mediaTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#F9FAFB",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-  },
-
   detailText: { fontSize: 13, color: "#6B7280" },
   mediaCountRow: { flexDirection: "row", gap: 8 },
   mediaTag: {
@@ -912,7 +1013,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
-    borderWith: 2,
+    borderWidth: 2,
     borderColor: "#FFF",
   },
   dropdownButton: {
@@ -990,6 +1091,63 @@ const styles = StyleSheet.create({
     margin: 24,
     padding: 20,
     borderRadius: 18,
+    alignItems: "center",
+  },
+
+  // Delete modal styles
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  deleteModal: {
+    backgroundColor: "#FFF",
+    borderRadius: 24,
+    padding: 28,
+    width: "100%",
+    maxWidth: 340,
+    alignItems: "center",
+  },
+  deleteIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FEE2E2",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  deleteTitle: {
+    fontSize: 18,
+    color: "#111827",
+    marginBottom: 8,
+  },
+  deleteMessage: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  deleteActions: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#EF4444",
     alignItems: "center",
   },
 });

@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   adminBadgeText: { color: "#7C3AED", fontSize: 10, fontWeight: "bold" },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 96,
     right: 20,
     width: 56,
     height: 56,

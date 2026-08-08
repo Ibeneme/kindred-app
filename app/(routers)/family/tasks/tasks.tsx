@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
   actionLabel: { fontSize: 13, fontWeight: "700" },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 96,
     right: 25,
     backgroundColor: "#111827",
     width: 64,
